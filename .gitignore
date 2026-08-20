@@ -1,0 +1,7 @@
+.env.local
+init-db.js
+local.db
+schema.sql
+.claude/**
+.next/**
+node_modules/**
