@@ -8,15 +8,20 @@
 // }
 import { NextResponse } from 'next/server';
 
+// 🚀 FORCE NEXT.JS TO RUN THIS CODE AT RUNTIME ON RENDER
+export const dynamic = 'force-dynamic'; 
+
 export async function GET() {
   const googleAuthUrl = new URL('https://google.com');
   
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const redirectUri = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI; 
 
-  // DEBUG LOGS: Look for these in your Render Logs tab!
-  console.log("DEBUG AUTH - Client ID exists:", !!clientId);
-  console.log("DEBUG AUTH - Sending Redirect URI:", redirectUri);
+  // These will now stream live to Render's backend dashboard
+  console.log("=== DEBUG AUTH START ===");
+  console.log("Is Client ID configured?", !!clientId);
+  console.log("Current Redirect URI:", redirectUri);
+  console.log("=== DEBUG AUTH END ===");
 
   googleAuthUrl.searchParams.append('client_id', clientId || '');
   googleAuthUrl.searchParams.append('redirect_uri', redirectUri || '');
