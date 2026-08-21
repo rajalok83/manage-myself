@@ -4,8 +4,9 @@ import { redirect } from 'next/navigation';
 export const dynamic = 'force-dynamic';
 
 export default async function LandingPage() {
+
   const user = await getSessionUser();
-  
+  console.log('LandingPage user:', user);
   // If the user has an active session cookie, send them straight to the dashboard workspace
   if (user) redirect('/dashboard');
 
