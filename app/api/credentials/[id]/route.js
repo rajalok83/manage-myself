@@ -125,6 +125,15 @@ export async function DELETE(req, { params }) {
       args: [id]
     });
 
+    try {
+      await turso.execute({
+        sql: 'DELETE FROM cards WHERE credential_id = ?',
+        args: [id]
+      });
+    } catch (error) {
+      if (!error.message?.includes('no such table')) throw error;
+    }
+
     // Delete the credential itself
     await turso.execute({
       sql: 'DELETE FROM credentials WHERE id = ? AND owner_id = ?',

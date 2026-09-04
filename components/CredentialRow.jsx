@@ -12,6 +12,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
   const [showMenu, setShowMenu] = useState(false);
   const [showPasswordReveal, setShowPasswordReveal] = useState(false);
   const [showShareForm, setShowShareForm] = useState(false);
+  const [revealedCard, setRevealedCard] = useState(null);
 
   const [editForm, setEditForm] = useState({
     nickname: item.nickname,
@@ -25,19 +26,30 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
     setErrorMessage('');
     
     try {
+      const isCard = item.category === 'Cards';
       const res = await fetch(`/api/credentials/${item.id}/info`, {
-        method: 'GET',
-        // method: 'POST',
-        // headers: { 'Content-Type': 'application/json' },
-        // body: JSON.stringify({ pin })
+        method: isCard ? 'POST' : 'GET',
+        ...(isCard ? {
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin })
+        } : {})
       });
-      // const data = await res.json();
 
       if (!res.ok) {
         throw new Error('Failed to retrieve credential data');
       }
 
-      const { encrypted_password, salt, iv } = await res.json();
+      const data = await res.json();
+
+      if (isCard) {
+        const cardDetails = JSON.parse(decryptData(data.card.encrypted_details, pin, data.card.salt, data.card.iv));
+        setRevealedCard({ ...data.card, ...cardDetails });
+        setDecryptedPassword('card');
+        setShowPasswordReveal(true);
+        return;
+      }
+
+      const { encrypted_password, salt, iv } = data;
 
       // 2. Perform local client-side decryption processing 
       const decryptedPassword = decryptData(encrypted_password, pin, salt, iv);
@@ -149,12 +161,12 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
               {item.nickname}
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096' }}>
+              {item.category !== 'Cards' && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096' }}>
                 <span style={{ fontWeight: '500' }}>Login:</span> {item.login_id}
-              </p>
-              <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096', wordBreak: 'break-all' }}>
+              </p>}
+              {item.category !== 'Cards' && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096', wordBreak: 'break-all' }}>
                 <span style={{ fontWeight: '500' }}>URL:</span> <a href={item.web_url} target="_blank" rel="noreferrer" style={{ color: '#3182ce', textDecoration: 'none' }}>{item.web_url}</a>
-              </p>
+              </p>}
               {item.description && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#4a5568' }}>{item.description}</p>}
               {isSharedView && <p style={{ margin: '6px 0 0 0', fontSize: 'clamp(11px, 2.5vw, 12px)', color: '#3182ce', fontWeight: '500' }}>📤 Shared by: {item.shared_by}</p>}
               {!isSharedView && item.shared_with && <p style={{ margin: '6px 0 0 0', fontSize: 'clamp(11px, 2.5vw, 12px)', color: '#3182ce', fontWeight: '500' }}>📤 Shared with: {item.shared_with}</p>}
@@ -329,6 +341,8 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
               <input 
                 type="password" 
                 placeholder="Enter PIN" 
+                inputMode={item.category === 'Cards' ? 'numeric' : undefined}
+                pattern={item.category === 'Cards' ? '[0-9]+' : undefined}
                 value={pin} 
                 onChange={(e) => setPin(e.target.value)} 
                 required 
@@ -340,9 +354,21 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
               <div style={{ padding: '10px', backgroundColor: '#f0fff4', border: '1px solid #c6f6d5', borderRadius: '4px', display: 'grid', gap: '8px' }}>
                 <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Category: {item.category || 'Not specified'}</p>
                 <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Nickname: {item.nickname}</p>
+                {item.category === 'Cards' && revealedCard ? (
+                  <>
+                    <p style={revealDetailStyle}>Card Type: {revealedCard.subcategory || item.category}</p>
+                    <p style={revealDetailStyle}>Card Number: <code style={revealCodeStyle}>{revealedCard.cardNumber}</code></p>
+                    <p style={revealDetailStyle}>CVV: <code style={revealCodeStyle}>{revealedCard.cvv}</code></p>
+                    <p style={revealDetailStyle}>Expiry Date: {revealedCard.expiryDate}</p>
+                    <p style={revealDetailStyle}>Name on Card: {revealedCard.nameOnCard}</p>
+                  </>
+                ) : (
+                  <>
                 <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500', wordBreak: 'break-all' }}>Website: {item.web_url}</p>
                 <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500', wordBreak: 'break-all' }}>Login ID: {item.login_id}</p>
                 <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Password: <code style={{ fontSize: '13px', color: '#2d3748', wordBreak: 'break-all' }}>{decryptedPassword}</code></p>
+                  </>
+                )}
                 {item.description && <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Description: {item.description}</p>}
                 {isSharedView && <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Shared by: {item.shared_by}</p>}
               </div>
@@ -352,6 +378,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
             onClick={() => {
               setShowPasswordReveal(false);
               setDecryptedPassword('');
+              setRevealedCard(null);
               setPin('');
             }}
             style={{
@@ -426,3 +453,6 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
     );
   }
 }
+
+const revealDetailStyle = { margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500', wordBreak: 'break-word' };
+const revealCodeStyle = { fontSize: '13px', color: '#2d3748', wordBreak: 'break-all' };

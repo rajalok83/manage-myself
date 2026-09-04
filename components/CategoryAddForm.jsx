@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { encryptData } from '@/lib/crypto';
 
 export default function CategoryAddForm({ subCategories = [], category, onSuccess, onClose }) {
   const [form, setForm] = useState({
@@ -11,6 +12,11 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
     login_id: '',
     password: '',
     pin: '',
+    cardPin: '',
+    cardNumber: '',
+    cvv: '',
+    expiryDate: '',
+    nameOnCard: '',
     description: ''
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -19,6 +25,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
   // Individual visibility toggle states
   const [showPassword, setShowPassword] = useState(false);
   const [showPin, setShowPin] = useState(false);
+  const [showCardPin, setShowCardPin] = useState(false);
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -30,16 +37,53 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
     setMessage('');
 
     try {
+      if (category === 'Cards') {
+        const missingFields = [
+          ['card type', form.subcategory],
+          ['nickname', form.nickname],
+          ['card number', form.cardNumber],
+          ['CVV', form.cvv],
+          ['expiry date', form.expiryDate],
+          ['name on card', form.nameOnCard],
+          ['PIN', form.pin],
+          ['Card PIN', form.cardPin]
+        ].filter(([, value]) => !String(value || '').trim()).map(([label]) => label);
+
+        if (missingFields.length > 0) {
+          throw new Error(`Enter: ${missingFields.join(', ')}.`);
+        }
+      }
+
       const securePayload = {
         category: form.category,
         subcategory: form.subcategory,
         nickname: form.nickname,
         web_url: form.web_url,
         login_id: form.login_id,
-        password: form.password,
-        pin: form.pin,
         description: form.description,
       };
+
+      if (category === 'Cards') {
+        const encryptedCard = encryptData(JSON.stringify({
+          cardNumber: form.cardNumber,
+          cvv: form.cvv,
+          expiryDate: form.expiryDate,
+          nameOnCard: form.nameOnCard,
+          cardPin: form.cardPin
+        }), form.pin);
+        Object.assign(securePayload, {
+          encrypted_details: encryptedCard.encryptedData,
+          salt: encryptedCard.salt,
+          iv: encryptedCard.iv
+        });
+      } else {
+        const encryptedCredential = encryptData(form.password, form.pin);
+        Object.assign(securePayload, {
+          encrypted_password: encryptedCredential.encryptedData,
+          salt: encryptedCredential.salt,
+          iv: encryptedCredential.iv
+        });
+      }
 
       const response = await fetch('/api/credentials', {
         method: 'POST',
@@ -62,10 +106,16 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
         login_id: '',
         password: '',
         pin: '',
+        cardPin: '',
+        cardNumber: '',
+        cvv: '',
+        expiryDate: '',
+        nameOnCard: '',
         description: ''
       });
       setShowPassword(false);
       setShowPin(false);
+      setShowCardPin(false);
 
       if (onSuccess) {
         onSuccess();
@@ -105,18 +155,43 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
           <input value={form.nickname} onChange={(e) => handleChange('nickname', e.target.value)} required style={fieldStyle} />
         </label>
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
-          <span style={{ fontWeight: '600' }}>Website URL</span>
-          <input type="url" value={form.web_url} onChange={(e) => handleChange('web_url', e.target.value)} required style={fieldStyle} />
-        </label>
+        {category === 'Cards' && (
+          <>
+            <label style={fieldLabelStyle}>
+              <span style={{ fontWeight: '600' }}>Card Number</span>
+              <input inputMode="numeric" autoComplete="cc-number" value={form.cardNumber} onChange={(e) => handleChange('cardNumber', e.target.value)} required style={fieldStyle} />
+            </label>
+            <label style={fieldLabelStyle}>
+              <span style={{ fontWeight: '600' }}>CVV</span>
+              <input type="password" inputMode="numeric" autoComplete="cc-csc" value={form.cvv} onChange={(e) => handleChange('cvv', e.target.value)} required minLength={3} maxLength={4} style={fieldStyle} />
+            </label>
+            <label style={fieldLabelStyle}>
+              <span style={{ fontWeight: '600' }}>Expiry Date</span>
+              <input placeholder="MM/YY" autoComplete="cc-exp" value={form.expiryDate} onChange={(e) => handleChange('expiryDate', e.target.value)} required style={fieldStyle} />
+            </label>
+            <label style={fieldLabelStyle}>
+              <span style={{ fontWeight: '600' }}>Name on Card</span>
+              <input autoComplete="cc-name" value={form.nameOnCard} onChange={(e) => handleChange('nameOnCard', e.target.value)} required style={fieldStyle} />
+            </label>
+          </>
+        )}
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
-          <span style={{ fontWeight: '600' }}>Login ID</span>
-          <input value={form.login_id} onChange={(e) => handleChange('login_id', e.target.value)} required style={fieldStyle} />
-        </label>
+        {category !== 'Cards' && (
+          <>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
+              <span style={{ fontWeight: '600' }}>Website URL</span>
+              <input type="url" value={form.web_url} onChange={(e) => handleChange('web_url', e.target.value)} required style={fieldStyle} />
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
+              <span style={{ fontWeight: '600' }}>Login ID</span>
+              <input value={form.login_id} onChange={(e) => handleChange('login_id', e.target.value)} required style={fieldStyle} />
+            </label>
+          </>
+        )}
 
         {/* Password input wrapper with Eye Icon toggle */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
+        {category !== 'Cards' && <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
           <span style={{ fontWeight: '600' }}>Password</span>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <input 
@@ -134,17 +209,22 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
               {showPassword ? '🙈' : '👁️'}
             </button>
           </div>
-        </div>
+        </div>}
 
-        {/* PIN input wrapper with Eye Icon toggle */}
+        {/* PIN encrypts the credential. Cards also have a separate encrypted Card PIN. */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
           <span style={{ fontWeight: '600' }}>PIN</span>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <input 
-              type={showPin ? "text" : "password"} 
+              type={category === 'Cards' ? 'text' : (showPin ? "text" : "password")} 
+              inputMode={category === 'Cards' ? 'numeric' : undefined}
+              pattern={category === 'Cards' ? '[0-9]+' : undefined}
               value={form.pin} 
               onChange={(e) => handleChange('pin', e.target.value)} 
-              required 
+              required
+              onKeyDown={category === 'Cards' ? (event) => {
+                if (!/[0-9]/.test(event.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(event.key)) event.preventDefault();
+              } : undefined}
               minLength={4} 
               style={{ ...fieldStyle, width: '100%', paddingRight: '40px', boxSizing: 'border-box' }} 
             />
@@ -157,6 +237,28 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
             </button>
           </div>
         </div>
+
+        {category === 'Cards' && (
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>Card PIN</span>
+            <input
+              type={showCardPin ? 'text' : 'password'}
+              inputMode="numeric"
+              pattern="[0-9]+"
+              placeholder="Numeric Card PIN"
+              value={form.cardPin}
+              onChange={(e) => handleChange('cardPin', e.target.value)}
+              onKeyDown={(event) => {
+                if (!/[0-9]/.test(event.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(event.key)) event.preventDefault();
+              }}
+              required
+              style={fieldStyle}
+            />
+            <button type="button" onClick={() => setShowCardPin(!showCardPin)} style={eyeButtonStyle}>
+              {showCardPin ? '🙈' : '👁️'}
+            </button>
+          </label>
+        )}
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', gridColumn: '1 / -1' }}>
           <span style={{ fontWeight: '600' }}>Description</span>
@@ -192,6 +294,14 @@ const fieldStyle = {
   fontSize: '13px',
   backgroundColor: '#fff',
   outline: 'none'
+};
+
+const fieldLabelStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '6px',
+  fontSize: '12px',
+  color: '#4a5568'
 };
 
 const eyeButtonStyle = {
