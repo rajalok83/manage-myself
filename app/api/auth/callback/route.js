@@ -1,7 +1,3 @@
-// =========================================================================
-// ⚡ ADDED: You must import AUTH_CONFIG at the absolute top of this file!
-// =========================================================================
-import { AUTH_CONFIG } from '@/lib/config'; 
 import { turso } from '@/lib/turso';
 import { NextResponse } from 'next/server';
 
@@ -22,9 +18,9 @@ export async function GET(request) {
 
   try {
     // These lines will now map beautifully without throwing an undefined error
-    const clientId = AUTH_CONFIG.GOOGLE_CLIENT_ID.trim();
-    const clientSecret = AUTH_CONFIG.GOOGLE_CLIENT_SECRET.trim();
-    const redirectUri = AUTH_CONFIG.NEXT_PUBLIC_GOOGLE_REDIRECT_URI.trim();
+    const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+    const clientSecret = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+    const redirectUri = String(process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI || '').trim();
 
     // Extract temporary state tracker cookie safely
     const cookieHeader = request.headers.get('cookie') || '';

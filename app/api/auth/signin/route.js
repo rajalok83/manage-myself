@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { AUTH_CONFIG } from '@/lib/config'; // ⚡ IMPORTED: Hard-compiled registry link
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -8,8 +7,8 @@ export async function GET() {
   console.log("✈️ PHASE 1: STARTING AUTHENTICATION DISPATCH");
 
   // Read explicitly from the stable config file to clear undefined/blank variable constraints
-  const clientId = AUTH_CONFIG.GOOGLE_CLIENT_ID.trim();
-  const redirectUri = AUTH_CONFIG.NEXT_PUBLIC_GOOGLE_REDIRECT_URI.trim();
+  const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  const redirectUri = String(process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI || '').trim();
 
   console.log(`⏰ SYSTEM RUNNING TIMESTAMP: ${new Date().toLocaleTimeString()}`);
   console.log("📢 DISPATCHING RAW CONFIG REDIRECT_URI:", redirectUri);
