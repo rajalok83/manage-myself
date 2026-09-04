@@ -1,29 +1,50 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 
-export const dynamic = 'force-dynamic'; 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET() {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const redirectUri = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI; 
+  console.log("✈️ PHASE 1: STARTING AUTHENTICATION DISPATCH");
 
-  // ❌ CRITICAL PRE-FLIGHT CHECK: Block broken links before redirecting
-  if (!clientId || clientId.trim() === '') {
-    return NextResponse.json(
-      { 
-        error: "Configuration Error", 
-        message: "Your GOOGLE_CLIENT_ID is missing or blank inside your .env.local file. Google will not show the sign-in screen without it." 
-      }, 
-      { status: 500 }
-    );
+  const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  const redirectUri = String(process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI || '').trim();
+
+  if (!clientId || !redirectUri) {
+    return NextResponse.json({ error: "Configuration values missing in .env.local" }, { status: 500 });
   }
 
-  // FIXED: Pointing directly to the official OAuth2 validation endpoint
-  const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  
-  googleAuthUrl.searchParams.append('client_id', clientId);
-  googleAuthUrl.searchParams.append('redirect_uri', redirectUri || '');
-  googleAuthUrl.searchParams.append('response_type', 'code');
-  googleAuthUrl.searchParams.append('scope', 'openid email profile');
+  const csrfState = crypto.randomBytes(16).toString('hex');
 
-  return NextResponse.redirect(googleAuthUrl.toString());
+  console.log(`⏰ LIVE REQUEST RUNNING AT: ${new Date().toLocaleTimeString()}`);
+  console.log("📢 DISPATCHING REDIRECT_URI TO GOOGLE:", redirectUri);
+
+  // 1. Construct the 100% correct, verified Google Accounts endpoint URL string
+  const authUrl = `https://google.com?` + 
+    `client_id=${encodeURIComponent(clientId)}&` +
+    `redirect_uri=${encodeURIComponent(redirectUri)}&` + 
+    `response_type=code&` +
+    `scope=openid%20email%20profile&` + 
+    `prompt=select_account&` +  
+    `state=${csrfState}&` +  
+    `access_type=offline`;
+
+  // 2. FIXED: Use NextResponse.redirect to pass a clean, legal framework response packet
+  const response = NextResponse.redirect(authUrl);
+
+  // 3. Inject strict anti-caching headers directly onto the redirect frame
+  response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  response.headers.set('Pragma', 'no-cache');
+  response.headers.set('Expires', '0');
+
+  // 4. Attach your secure anti-forgery tracking cookie state
+  response.cookies.set('oauth_state', csrfState, {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 300, // 5 minutes execution window
+    secure: process.env.NODE_ENV === 'production'
+  });
+
+  return response;
 }

@@ -80,17 +80,25 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
   const handleShare = async (e) => {
     e.preventDefault();
     setErrorMessage('');
+    const normalizedEmail = shareEmail.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setErrorMessage('Enter the recipient email address.');
+      return;
+    }
+
     try {
       const res = await fetch('/api/share', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentialId: item.id, targetEmail: shareEmail })
+        body: JSON.stringify({ credentialId: item.id, targetEmail: normalizedEmail })
       });
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.error || 'Sharing error occurred');
       
       alert('Vault item linked successfully!');
+      window.dispatchEvent(new CustomEvent('credential-shared'));
       setShareEmail('');
       setShowShareForm(false);
     } catch (err) {
@@ -125,9 +133,15 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
   };
 
   // Close menu if not editing
-  if (!isEditing && !showPasswordReveal && !showShareForm) {
+  if (!isEditing && !showPasswordReveal) {
     return (
-      <div style={{ padding: '14px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#fff', marginBottom: '12px' }}>
+      <div
+        onClick={(event) => {
+          if (event.target.closest('button, a, input, textarea, select, form')) return;
+          setShowPasswordReveal(true);
+        }}
+        style={{ padding: '14px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#fff', marginBottom: '12px', cursor: 'pointer' }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
           {/* Card Content */}
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -143,6 +157,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
               </p>
               {item.description && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#4a5568' }}>{item.description}</p>}
               {isSharedView && <p style={{ margin: '6px 0 0 0', fontSize: 'clamp(11px, 2.5vw, 12px)', color: '#3182ce', fontWeight: '500' }}>📤 Shared by: {item.shared_by}</p>}
+              {!isSharedView && item.shared_with && <p style={{ margin: '6px 0 0 0', fontSize: 'clamp(11px, 2.5vw, 12px)', color: '#3182ce', fontWeight: '500' }}>📤 Shared with: {item.shared_with}</p>}
             </div>
           </div>
 
@@ -322,9 +337,14 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
               <button type="submit" style={{ padding: '6px 12px', backgroundColor: '#48bb78', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', whiteSpace: 'nowrap' }}>Reveal</button>
             </form>
             {decryptedPassword && (
-              <div style={{ padding: '10px', backgroundColor: '#f0fff4', border: '1px solid #c6f6d5', borderRadius: '4px' }}>
-                <p style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Password:</p>
-                <code style={{ fontSize: '13px', color: '#2d3748', wordBreak: 'break-all' }}>{decryptedPassword}</code>
+              <div style={{ padding: '10px', backgroundColor: '#f0fff4', border: '1px solid #c6f6d5', borderRadius: '4px', display: 'grid', gap: '8px' }}>
+                <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Category: {item.category || 'Not specified'}</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Nickname: {item.nickname}</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500', wordBreak: 'break-all' }}>Website: {item.web_url}</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500', wordBreak: 'break-all' }}>Login ID: {item.login_id}</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Password: <code style={{ fontSize: '13px', color: '#2d3748', wordBreak: 'break-all' }}>{decryptedPassword}</code></p>
+                {item.description && <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Description: {item.description}</p>}
+                {isSharedView && <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Shared by: {item.shared_by}</p>}
               </div>
             )}
           </div>

@@ -44,7 +44,7 @@ export default function DashboardClient({ user, categories, sharedByMeRows, shar
         sharedByMeCount={sharedByMeRows.length}
       />
 
-      <main style={{ padding: '16px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      <main style={{ padding: '76px 16px 16px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'sans-serif' }}>
         {activeView === 'vault' && (
           <section>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '14px' }}>

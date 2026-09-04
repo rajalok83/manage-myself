@@ -64,15 +64,11 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {sharedByMe.map((item, index) => (
-                  <div 
+                  <div
                     key={`shared-bm-${item.id}-${index}`}
-                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '6px', gap: '8px', flexWrap: 'wrap' }}
+                    style={{ display: 'grid', gap: '6px' }}
                   >
-                    <div style={{ flex: '1', minWidth: '150px' }}>
-                      <span style={{ fontWeight: 'bold', color: '#2d3748', fontSize: 'clamp(13px, 3vw, 14px)' }}>{item.nickname}</span>
-                      <span style={{ fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096', marginLeft: '8px' }}>({item.category})</span>
-                      <p style={{ margin: '4px 0 0 0', fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#4a5568', wordBreak: 'break-all' }}><strong>Shared with:</strong> {item.shared_with}</p>
-                    </div>
+                    <CredentialRow item={item} isSharedView={false} />
                     <button 
                       onClick={() => handleRevokeShare(item.id, item.shared_with)}
                       style={{ padding: '6px 10px', color: '#e53e3e', backgroundColor: '#fff', border: '1px solid #fed7d7', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px', whiteSpace: 'nowrap' }}

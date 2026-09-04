@@ -31,7 +31,7 @@ export default async function DashboardPage() {
     });
 
     const sharedByMeQuery = await turso.execute({
-      sql: `SELECT c.id, c.nickname, c.category, u.email as shared_with
+      sql: `SELECT c.id, c.nickname, c.category, c.web_url, c.login_id, c.description, u.email as shared_with
             FROM credential_shares s
             JOIN credentials c ON s.credential_id = c.id
             JOIN users u ON s.shared_with_user_id = u.id

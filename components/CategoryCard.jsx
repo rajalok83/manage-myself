@@ -6,8 +6,7 @@ export default function CategoryCard({ name, count = 0, palette = { background: 
   const href = `/category/${encodeURIComponent(name)}`;
 
   return (
-    <Link 
-      href={href}
+    <div
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -35,25 +34,35 @@ export default function CategoryCard({ name, count = 0, palette = { background: 
         e.currentTarget.style.boxShadow = '0 4px 10px rgba(15, 23, 42, 0.06)';
       }}
     >
-      <h3 style={{ 
-        margin: '0 0 8px 0', 
-        fontSize: 'clamp(20px, 3.5vw, 16px)', 
-        fontWeight: '900', 
-        textAlign: 'center',
-        lineHeight: '1.2',
-        color: '#1f2937'
+      <Link href={href} style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        color: 'inherit',
+        textDecoration: 'none'
       }}>
-        {name}
-      </h3>
-      <div style={{
-        fontSize: 'clamp(20px, 5vw, 28px)',
-        fontWeight: '900',
-        color: palette.accent,
-        marginBottom: '6px',
-        lineHeight: 1
-      }}>
-        {count}
-      </div>
+        <h3 style={{ 
+          margin: '0 0 8px 0', 
+          fontSize: 'clamp(20px, 3.5vw, 16px)', 
+          fontWeight: '900',
+          textAlign: 'center',
+          lineHeight: '1.2',
+          color: '#1f2937'
+        }}>
+          {name}
+        </h3>
+        <div style={{
+          fontSize: 'clamp(20px, 5vw, 28px)',
+          fontWeight: '900',
+          color: palette.accent,
+          marginBottom: '6px',
+          lineHeight: 1
+        }}>
+          {count}
+        </div>
+      </Link>
 
       <button
         type="button"
@@ -84,6 +93,6 @@ export default function CategoryCard({ name, count = 0, palette = { background: 
       >
         +
       </button>
-    </Link>
+    </div>
   );
 }

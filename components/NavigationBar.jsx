@@ -1,32 +1,117 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
 
 export default function NavigationBar({ user, activeView = 'vault', onViewChange, sharedWithMeCount = 0, sharedByMeCount = 0 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [profileMode, setProfileMode] = useState(null);
+  const [profile, setProfile] = useState({
+    firstName: user.firstName || user.first_name || '',
+    lastName: user.lastName || user.last_name || '',
+    email: user.email || ''
+  });
+  const [profileMessage, setProfileMessage] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [sharedWithMeTotal, setSharedWithMeTotal] = useState(sharedWithMeCount);
+  const [sharedByMeTotal, setSharedByMeTotal] = useState(sharedByMeCount);
+
+  useEffect(() => {
+    const handleCredentialShared = () => setSharedByMeTotal((count) => count + 1);
+    window.addEventListener('credential-shared', handleCredentialShared);
+    return () => window.removeEventListener('credential-shared', handleCredentialShared);
+  }, []);
 
   const handleSelect = (viewId) => {
     if (onViewChange) onViewChange(viewId);
     setIsOpen(false);
   };
 
+  const openProfile = (mode) => {
+    setProfileMessage('');
+    setProfileMode(mode);
+    setIsOpen(false);
+  };
+
+  const saveProfile = async (event) => {
+    event.preventDefault();
+    setIsSavingProfile(true);
+    setProfileMessage('');
+
+    try {
+      const response = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName: profile.firstName, lastName: profile.lastName })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to update profile.');
+      setProfileMessage('Profile updated.');
+      setProfileMode('view');
+    } catch (error) {
+      setProfileMessage(error.message);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   const navItems = [
     { id: 'vault', label: 'My Vault', icon: '🏠' },
-    { id: 'shared_with_me', label: `Shared With Me (${sharedWithMeCount})`, icon: '📥' },
-    { id: 'shared_by_me', label: `Shared By Me (${sharedByMeCount})`, icon: '📤' }
+    { id: 'shared_with_me', label: `Shared With Me (${sharedWithMeTotal})`, icon: '📥' },
+    { id: 'shared_by_me', label: `Shared By Me (${sharedByMeTotal})`, icon: '📤' }
   ];
 
   return (
     <nav style={{
-      position: 'sticky',
+      position: 'fixed',
       top: 0,
+      left: 0,
+      right: 0,
       zIndex: 100,
       display: 'flex',
-      justifyContent: 'flex-end',
+      justifyContent: 'space-between',
       alignItems: 'center',
       padding: '12px 16px',
-      background: 'transparent'
+      background: '#f7fafc',
+      boxSizing: 'border-box'
     }}>
+      <Link
+        href="/dashboard"
+        aria-label="Go to dashboard"
+        onClick={(event) => {
+          event.preventDefault();
+          window.location.assign('/dashboard');
+        }}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
+          color: '#1a202c',
+          fontSize: '16px',
+          fontWeight: '700',
+          textDecoration: 'none'
+        }}
+      >
+        <span aria-hidden="true" style={{ fontSize: '22px', lineHeight: 1 }}>🏠</span>
+      </Link>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <button
+          type="button"
+          onClick={() => handleSelect('shared_with_me')}
+          style={navButtonStyle}
+        >
+          <span aria-hidden="true">📥</span>
+          With Me ({sharedWithMeTotal})
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSelect('shared_by_me')}
+          style={navButtonStyle}
+        >
+          <span aria-hidden="true">📤</span>
+          By Me ({sharedByMeTotal})
+        </button>
       <div style={{ position: 'relative' }}>
         <button
           type="button"
@@ -84,14 +169,14 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
                   justifyContent: 'center',
                   fontWeight: '700'
                 }}>
-                  {user.firstName?.charAt(0)}{user.lastName?.charAt(0)}
+                  {profile.firstName?.charAt(0)}{profile.lastName?.charAt(0)}
                 </div>
                 <div>
                   <div style={{ fontWeight: '700', color: '#1a202c', fontSize: '14px' }}>
-                    {user.firstName} {user.lastName}
+                    {profile.firstName} {profile.lastName}
                   </div>
                   <div style={{ color: '#64748b', fontSize: '12px', wordBreak: 'break-all' }}>
-                    {user.email}
+                    {profile.email}
                   </div>
                 </div>
               </div>
@@ -119,7 +204,7 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
                   gap: '10px'
                 }}
               >
-                <span>🏠</span>
+                <span aria-hidden="true">🔐</span>
                 <span>My Vault</span>
               </button>
 
@@ -140,8 +225,8 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
                   gap: '10px'
                 }}
               >
-                <span>📥</span>
-                <span>Shared With Me ({sharedWithMeCount})</span>
+                <span aria-hidden="true">📥</span>
+                <span>Shared With Me ({sharedWithMeTotal})</span>
               </button>
 
               <button
@@ -161,15 +246,15 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
                   gap: '10px'
                 }}
               >
-                <span>📤</span>
-                <span>Shared By Me ({sharedByMeCount})</span>
+                <span aria-hidden="true">📤</span>
+                <span>Shared By Me ({sharedByMeTotal})</span>
               </button>
 
               <div style={{ borderTop: '1px solid #edf2f7', margin: '8px 0' }} />
 
               <button
                 type="button"
-                onClick={() => setIsOpen(false)}
+                onClick={() => openProfile('view')}
                 style={{
                   width: '100%',
                   border: 'none',
@@ -190,7 +275,7 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
 
               <button
                 type="button"
-                onClick={() => setIsOpen(false)}
+                onClick={() => openProfile('edit')}
                 style={{
                   width: '100%',
                   border: 'none',
@@ -230,6 +315,123 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
           </div>
         )}
       </div>
+      </div>
+
+      {profileMode && (
+        <div
+          role="presentation"
+          onClick={() => setProfileMode(null)}
+          style={profileOverlayStyle}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+            style={profileDialogStyle}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+              <h2 id="profile-dialog-title" style={{ margin: 0, fontSize: '20px', color: '#1a202c' }}>
+                {profileMode === 'edit' ? 'Edit Profile' : 'Your Profile'}
+              </h2>
+              <button type="button" aria-label="Close profile" onClick={() => setProfileMode(null)} style={closeButtonStyle}>×</button>
+            </div>
+
+            {profileMode === 'edit' ? (
+              <form onSubmit={saveProfile} style={{ display: 'grid', gap: '12px', marginTop: '18px' }}>
+                <label style={labelStyle}>
+                  First name
+                  <input value={profile.firstName} onChange={(event) => setProfile({ ...profile, firstName: event.target.value })} required style={inputStyle} />
+                </label>
+                <label style={labelStyle}>
+                  Last name
+                  <input value={profile.lastName} onChange={(event) => setProfile({ ...profile, lastName: event.target.value })} required style={inputStyle} />
+                </label>
+                <label style={labelStyle}>
+                  Email
+                  <input value={profile.email} readOnly style={{ ...inputStyle, backgroundColor: '#f1f5f9' }} />
+                </label>
+                <button type="submit" disabled={isSavingProfile} style={saveButtonStyle}>
+                  {isSavingProfile ? 'Saving...' : 'Save changes'}
+                </button>
+              </form>
+            ) : (
+              <div style={{ display: 'grid', gap: '8px', marginTop: '18px', color: '#475569' }}>
+                <strong style={{ color: '#1a202c', fontSize: '18px' }}>{profile.firstName} {profile.lastName}</strong>
+                <span>{profile.email}</span>
+                <button type="button" onClick={() => setProfileMode('edit')} style={saveButtonStyle}>Edit profile</button>
+              </div>
+            )}
+            {profileMessage && <p style={{ margin: '12px 0 0', color: profileMessage === 'Profile updated.' ? '#15803d' : '#b91c1c', fontSize: '13px' }}>{profileMessage}</p>}
+          </section>
+        </div>
+      )}
     </nav>
   );
 }
+
+const navButtonStyle = {
+  border: 'none',
+  borderRadius: '8px',
+  padding: '8px 10px',
+  background: '#fff',
+  color: '#1a202c',
+  fontSize: '13px',
+  fontWeight: '600',
+  cursor: 'pointer'
+};
+
+const profileOverlayStyle = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 300,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '20px',
+  background: 'rgba(15, 23, 42, 0.45)'
+};
+
+const profileDialogStyle = {
+  width: '100%',
+  maxWidth: '420px',
+  padding: '24px',
+  borderRadius: '16px',
+  background: '#fff',
+  boxShadow: '0 24px 60px rgba(15, 23, 42, 0.2)'
+};
+
+const closeButtonStyle = {
+  border: 'none',
+  background: 'transparent',
+  color: '#64748b',
+  fontSize: '26px',
+  cursor: 'pointer'
+};
+
+const labelStyle = {
+  display: 'grid',
+  gap: '6px',
+  color: '#475569',
+  fontSize: '13px',
+  fontWeight: '600'
+};
+
+const inputStyle = {
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '10px 12px',
+  border: '1px solid #cbd5e1',
+  borderRadius: '8px',
+  fontSize: '14px'
+};
+
+const saveButtonStyle = {
+  border: 'none',
+  borderRadius: '8px',
+  padding: '10px 14px',
+  background: '#2563eb',
+  color: '#fff',
+  fontWeight: '700',
+  cursor: 'pointer'
+};

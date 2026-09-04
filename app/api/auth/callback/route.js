@@ -1,45 +1,90 @@
+// =========================================================================
+// ⚡ ADDED: You must import AUTH_CONFIG at the absolute top of this file!
+// =========================================================================
+import { AUTH_CONFIG } from '@/lib/config'; 
 import { turso } from '@/lib/turso';
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request) {
+  // This message will now successfully print to your terminal window!
+  console.log("📥 PHASE 2 CALLBACK RECEIVED! Intercepting token validation code packet...");
+
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
+  const incomingState = searchParams.get('state');
 
   if (!code) {
-    return NextResponse.json({ error: 'Authorization code missing' }, { status: 400 });
+    return NextResponse.json({ error: 'Authorization token code payload missing' }, { status: 400 });
   }
 
   try {
-    // FIXED: Changed from 'https://googleapis.com' to official token gateway
-    const tokenResponse = await fetch('https://googleapis.com', {
+    // These lines will now map beautifully without throwing an undefined error
+    const clientId = AUTH_CONFIG.GOOGLE_CLIENT_ID.trim();
+    const clientSecret = AUTH_CONFIG.GOOGLE_CLIENT_SECRET.trim();
+    const redirectUri = AUTH_CONFIG.NEXT_PUBLIC_GOOGLE_REDIRECT_URI.trim();
+
+    // Extract temporary state tracker cookie safely
+    const cookieHeader = request.headers.get('cookie') || '';
+    const stateCookie = cookieHeader.match(/oauth_state=([^;]+)/)?.[1];
+
+    // Assemble the body values payload explicitly as url-encoded forms
+        // Ensure the payload values match standard application/x-www-form-urlencoded specifications
+    const payload = new URLSearchParams();
+    payload.append('code', code.trim());
+    payload.append('client_id', clientId);
+    payload.append('client_secret', clientSecret);
+    payload.append('redirect_uri', redirectUri);
+    payload.append('grant_type', 'authorization_code');
+
+    console.log("📡 EXCHANGING TOKEN WITH OAUTH2.GOOGLEAPIS.COM...");
+    
+    // =========================================================================
+    // ⚡ FIXED: Explicitly call payload.toString() inside the body block.
+    // This forces the environment to send a native form string payload, 
+    // resolving Google's strict endpoint 404 rejection.
+    // =========================================================================
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code,
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri: process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI,
-        grant_type: 'authorization_code',
-      }),
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: payload.toString(), // Explicit string serialization fix
     });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      console.error("❌ Google Token API Crash payload response:", errorText);
+      throw new Error(`Google Token HTTP Error Status: ${tokenResponse.status}`);
+    }
 
     const tokens = await tokenResponse.json();
-    if (tokens.error) throw new Error(tokens.error_description || tokens.error);
 
-    // FIXED: Changed from 'https://googleapis.com' to official userinfo gateway
-    const userResponse = await fetch('https://googleapis.com', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    console.log("👤 FETCHING IDENTITY PROFILE METADATA...");
+    const userResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${tokens.access_token}`,
+        'Accept': 'application/json'
+      },
     });
     
+    if (!userResponse.ok) {
+      throw new Error(`Google Profile Userinfo HTTP Error Status: ${userResponse.status}`);
+    }
+
     const profile = await userResponse.json(); 
-    if (profile.error) throw new Error(profile.error_description || 'Failed fetching profile');
 
-    const firstName = profile.given_name || profile.name?.split(' ')[0] || 'First';
-    const lastName = profile.family_name || profile.name?.split(' ').slice(1).join(' ') || 'Last';
-    const userId = profile.sub || profile.id;
+    // Handle names configuration extraction safely
+    const nameParts = profile.name?.split(' ') || [];
+    const firstName = profile.given_name || nameParts[0] || 'First';
+    const lastName = profile.family_name || nameParts.slice(1).join(' ') || 'Last';
+    const userId = String(profile.sub || profile.id);
 
-    // Save or update the user details in Turso
+    console.log("💾 COMMITTING RECORD TO TURSO DATABASE:", profile.email);
     await turso.execute({
       sql: `INSERT INTO users (id, email, first_name, last_name, avatar_url) 
             VALUES (?, ?, ?, ?, ?) 
@@ -47,22 +92,29 @@ export async function GET(request) {
               first_name = excluded.first_name, 
               last_name = excluded.last_name, 
               avatar_url = excluded.avatar_url`,
-      args: [userId, profile.email, firstName, lastName, profile.picture]
+      args: [userId, profile.email, firstName, lastName, profile.picture || '']
     });
 
-    // Generate a secure, randomized session token
-    const sessionToken = crypto.randomBytes(32).toString('hex');
+    // Create a crypto secure session token using Web Crypto API
+    const sessionArray = new Uint8Array(32);
+    crypto.getRandomValues(sessionArray);
+    const sessionToken = Array.from(sessionArray, byte => byte.toString(16).padStart(2, '0')).join('');
+    
     const oneWeekInSeconds = 60 * 60 * 24 * 7;
     const expiresAt = Math.floor(Date.now() / 1000) + oneWeekInSeconds;
 
-    // Write the session to the database
     await turso.execute({
       sql: 'INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)',
       args: [sessionToken, userId, expiresAt]
     });
 
-    // Attach cookie and send to dashboard
-    const response = NextResponse.redirect(new URL('/dashboard', request.url));
+    // Build absolute redirection parameters to neutralize Next.js domain loops
+    const appRootUrl = 'http://localhost:3000';
+    const destinationDashboard = new URL('/dashboard', appRootUrl);
+
+    console.log("🎯 REDIRECTING SECURE USER ENTRY TO:", destinationDashboard.toString());
+    const response = NextResponse.redirect(destinationDashboard);
+    
     response.cookies.set('session_token', sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', 
@@ -71,10 +123,22 @@ export async function GET(request) {
       path: '/',
     });
 
+    // Clean up temporary tracking cookie
+    response.cookies.set('oauth_state', '', { maxAge: 0, path: '/' });
+    
+    console.log("🚀 AUTHENTICATION COMPLETELY SUCCESSFUL! DATAFRAMES VERIFIED.");
     return response;
 
   } catch (error) {
-    console.error('OAuth Callback handling failure:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('❌ Phase 2 process encountered a critical error:', error);
+
+    if (error.message === 'Server returned HTTP status 401') {
+      return NextResponse.json({
+        error: 'The Turso database token is expired or invalid. Generate a new token and restart the development server.',
+        file: 'callback/route.js'
+      }, { status: 503 });
+    }
+
+    return NextResponse.json({ error: error.message, file: 'callback/route.js' }, { status: 500 });
   }
 }

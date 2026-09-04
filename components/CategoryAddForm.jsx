@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { encryptData } from '@/lib/crypto'; 
 
 export default function CategoryAddForm({ subCategories = [], category, onSuccess, onClose }) {
   const [form, setForm] = useState({
@@ -31,22 +30,15 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
     setMessage('');
 
     try {
-      const encryptionPayload = encryptData(form.password, form.pin);
-      
-      if (!encryptionPayload || !encryptionPayload.encrypted_password) {
-        throw new Error('Local cryptographic encryption failed.');
-      }
-
       const securePayload = {
         category: form.category,
         subcategory: form.subcategory,
         nickname: form.nickname,
         web_url: form.web_url,
         login_id: form.login_id,
+        password: form.password,
+        pin: form.pin,
         description: form.description,
-        encrypted_password: encryptionPayload.encrypted_password,
-        salt: encryptionPayload.salt,
-        iv: encryptionPayload.iv
       };
 
       const response = await fetch('/api/credentials', {
