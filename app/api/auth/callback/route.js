@@ -1,6 +1,6 @@
 import { turso } from '@/lib/turso';
 import { NextResponse } from 'next/server';
-import { getGoogleRedirectUri } from '@/lib/google-auth';
+import { getGoogleRedirectUri, getPublicOrigin } from '@/lib/google-auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -106,7 +106,7 @@ export async function GET(request) {
     });
 
     // Build absolute redirection parameters to neutralize Next.js domain loops
-    const appRootUrl = new URL(request.url).origin;
+    const appRootUrl = getPublicOrigin(request);
     const destinationDashboard = new URL('/dashboard', appRootUrl);
 
     console.log("🎯 REDIRECTING SECURE USER ENTRY TO:", destinationDashboard.toString());
