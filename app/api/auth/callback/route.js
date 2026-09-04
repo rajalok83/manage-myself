@@ -1,5 +1,6 @@
 import { turso } from '@/lib/turso';
 import { NextResponse } from 'next/server';
+import { getGoogleRedirectUri } from '@/lib/google-auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -20,7 +21,7 @@ export async function GET(request) {
     // These lines will now map beautifully without throwing an undefined error
     const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
     const clientSecret = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
-    const redirectUri = String(process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI || '').trim();
+    const redirectUri = getGoogleRedirectUri(request);
 
     // Extract temporary state tracker cookie safely
     const cookieHeader = request.headers.get('cookie') || '';
@@ -105,7 +106,7 @@ export async function GET(request) {
     });
 
     // Build absolute redirection parameters to neutralize Next.js domain loops
-    const appRootUrl = 'http://localhost:3000';
+    const appRootUrl = new URL(request.url).origin;
     const destinationDashboard = new URL('/dashboard', appRootUrl);
 
     console.log("🎯 REDIRECTING SECURE USER ENTRY TO:", destinationDashboard.toString());

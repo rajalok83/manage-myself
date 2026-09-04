@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
+import { getGoogleRedirectUri } from '@/lib/google-auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request) {
   console.log("✈️ PHASE 1: STARTING AUTHENTICATION DISPATCH");
 
   // Read explicitly from the stable config file to clear undefined/blank variable constraints
   const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
-  const redirectUri = String(process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI || '').trim();
+  const redirectUri = getGoogleRedirectUri(request);
 
   console.log(`⏰ SYSTEM RUNNING TIMESTAMP: ${new Date().toLocaleTimeString()}`);
   console.log("📢 DISPATCHING RAW CONFIG REDIRECT_URI:", redirectUri);
