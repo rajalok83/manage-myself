@@ -5,6 +5,9 @@ import NavigationBar from './NavigationBar';
 import SharedManagement from './SharedManagement';
 import CategoryCard from './CategoryCard';
 import CategoryAddForm from './CategoryAddForm';
+import ToastViewport from './ToastViewport';
+import LoadingViewport from './LoadingViewport';
+import { startLoading, stopLoading } from '@/lib/loading';
 
 const cardPalette = [
   { background: '#f4f1ea', accent: '#8b6f47', border: '#e7dcc6' },
@@ -25,6 +28,7 @@ export default function DashboardClient({ user, categories }) {
   const [error, setError] = useState('');
 
   const loadDashboard = async () => {
+    startLoading();
     setIsLoading(true);
     setError('');
 
@@ -43,6 +47,7 @@ export default function DashboardClient({ user, categories }) {
       setError(loadError.message);
     } finally {
       setIsLoading(false);
+      stopLoading();
     }
   };
 
@@ -67,6 +72,8 @@ export default function DashboardClient({ user, categories }) {
 
   return (
     <>
+      <ToastViewport />
+      <LoadingViewport />
       <NavigationBar 
         user={user} 
         activeView={activeView} 

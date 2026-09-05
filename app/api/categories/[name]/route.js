@@ -1,4 +1,4 @@
-import { turso, getSessionUser } from '@/lib/turso';
+import { turso, getSessionUser, ensureCredentialMetadataColumns } from '@/lib/turso';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -10,6 +10,7 @@ export async function GET(request, { params }) {
   const categoryName = decodeURIComponent(params.name);
 
   try {
+    await ensureCredentialMetadataColumns();
     try {
       await turso.execute('ALTER TABLE credentials ADD COLUMN subcategory TEXT');
     } catch (error) {
@@ -18,8 +19,8 @@ export async function GET(request, { params }) {
 
     const [credentialsQuery, shareCountQuery] = await Promise.all([
       turso.execute({
-        sql: `SELECT c.id, c.category, c.nickname, c.web_url, c.login_id, c.description,
-            COALESCE(c.subcategory, (SELECT subcategory FROM cards WHERE credential_id = c.id)) AS subcategory
+        sql: `SELECT c.id, c.category, c.nickname,
+            c.subcategory AS subcategory
           FROM credentials c WHERE c.owner_id = ? AND c.category = ? ORDER BY c.nickname ASC`,
         args: [user.id, categoryName]
       }),

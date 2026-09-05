@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { encryptData, decryptData } from '@/lib/crypto';
+import { showToast } from '@/lib/toast';
+import { startLoading, stopLoading } from '@/lib/loading';
 
 export default function CredentialRow({ item, isSharedView = false, onRefresh }) {
   const rowRef = useRef(null);
@@ -15,6 +17,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
   }[item.category] || (item.subcategory ? [item.subcategory] : []);
   const [pin, setPin] = useState('');
   const [decryptedPassword, setDecryptedPassword] = useState('');
+  const [decryptedMetadata, setDecryptedMetadata] = useState({});
   const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [shareEmail, setShareEmail] = useState('');
@@ -33,12 +36,14 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
   const [editUnlockPin, setEditUnlockPin] = useState('');
   const [showEditUnlockPin, setShowEditUnlockPin] = useState(false);
   const [isUnlockingEdit, setIsUnlockingEdit] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (revealSeconds === null) return undefined;
     if (revealSeconds <= 0) {
       setShowPasswordReveal(false);
       setDecryptedPassword('');
+      setDecryptedMetadata({});
       setRevealedCard(null);
       setShowCardPin(false);
       setPin('');
@@ -89,6 +94,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
     event.preventDefault();
     if (!editUnlockPin) return;
     setIsUnlockingEdit(true);
+    startLoading();
 
     try {
       const response = await fetch(`/api/credentials/${item.id}/info`, {
@@ -108,19 +114,27 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
       } else {
         setDecryptedPassword(decryptData(data.encrypted_password, editUnlockPin, data.salt, data.iv));
       }
+      if (data.encrypted_metadata) {
+        setEditForm((previous) => ({
+          ...previous,
+          ...JSON.parse(decryptData(data.encrypted_metadata, editUnlockPin, data.metadata_salt, data.metadata_iv))
+        }));
+      }
       setShowEditUnlock(false);
       setIsEditing(true);
     } catch (error) {
       setErrorMessage(error.message);
-      alert(`Unable to edit this item: ${error.message}`);
+      showToast(`Unable to edit this item: ${error.message}`);
     } finally {
       setIsUnlockingEdit(false);
+      stopLoading();
     }
   };
 
   const handleReveal = async (e) => {
     e.preventDefault();
     setErrorMessage('');
+    startLoading();
     
     try {
       const res = await fetch(`/api/credentials/${item.id}/info`, {
@@ -141,6 +155,9 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
       if (isCard) {
         const cardDetails = JSON.parse(decryptData(data.card.encrypted_details, pin, data.card.salt, data.card.iv));
         setRevealedCard({ ...data.card, ...cardDetails });
+        if (data.card.encrypted_metadata) {
+          setDecryptedMetadata(JSON.parse(decryptData(data.card.encrypted_metadata, pin, data.card.metadata_salt, data.card.metadata_iv)));
+        }
         setDecryptedPassword('card');
         setShowCardPin(false);
         setRevealSeconds(30);
@@ -152,19 +169,25 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
 
       // 2. Perform local client-side decryption processing 
       const decryptedPassword = decryptData(encrypted_password, pin, salt, iv);
+      if (data.encrypted_metadata) {
+        setDecryptedMetadata(JSON.parse(decryptData(data.encrypted_metadata, pin, data.metadata_salt, data.metadata_iv)));
+      }
       // console.log(decryptedPassword);
       setDecryptedPassword(decryptedPassword);
       setRevealSeconds(30);
       setShowPasswordReveal(true);
     } catch (err) {
       setErrorMessage(err.message);
-      alert(`Unable to reveal this item: ${err.message}`);
+      showToast(`Unable to reveal this item: ${err.message}`);
+    } finally {
+      stopLoading();
     }
   };
 
   const handleUpdate = async (e) => {
     e.preventDefault();
     setErrorMessage('');
+    startLoading();
 
     try {
       const encryptionPayload = !isCard ? encryptData(decryptedPassword, pin) : null;
@@ -179,8 +202,12 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
         if (!cardResponse.ok) throw new Error(cardData.error || 'Unable to load card details.');
         const cardDetails = JSON.parse(decryptData(cardData.card.encrypted_details, pin, cardData.card.salt, cardData.card.iv));
         const encryptedCard = encryptData(JSON.stringify({ ...cardDetails, cardPin: editCardPin || cardDetails.cardPin }), pin);
+        const metadata = encryptData(JSON.stringify({ web_url: editForm.web_url, login_id: editForm.login_id, description: editForm.description }), pin);
         payload = {
           ...editForm,
+          encrypted_metadata: metadata.encryptedData,
+          metadata_salt: metadata.salt,
+          metadata_iv: metadata.iv,
           category: item.category,
           encrypted_details: encryptedCard.encryptedData,
           salt: encryptedCard.salt,
@@ -188,7 +215,8 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
           subcategory: editForm.subcategory
         };
       } else {
-        payload = { ...editForm, encrypted_password: encryptionPayload.encryptedData, salt: encryptionPayload.salt, iv: encryptionPayload.iv };
+        const metadata = encryptData(JSON.stringify({ web_url: editForm.web_url, login_id: editForm.login_id, description: editForm.description }), pin);
+        payload = { ...editForm, encrypted_password: encryptionPayload.encryptedData, salt: encryptionPayload.salt, iv: encryptionPayload.iv, encrypted_metadata: metadata.encryptedData, metadata_salt: metadata.salt, metadata_iv: metadata.iv };
       }
       const res = await fetch(`/api/credentials/${item.id}`, {
         method: 'PUT',
@@ -206,6 +234,8 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
       if (onRefresh) await onRefresh();
     } catch (err) {
       setErrorMessage(err.message);
+    } finally {
+      stopLoading();
     }
   };
 
@@ -219,6 +249,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
       return;
     }
 
+    startLoading();
     try {
       const res = await fetch('/api/share', {
         method: 'POST',
@@ -229,22 +260,21 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
 
       if (!res.ok) throw new Error(data.error || 'Sharing error occurred');
       
-      alert('Vault item linked successfully!');
+      showToast('Vault item shared successfully.', 'success');
       window.dispatchEvent(new CustomEvent('credential-shared'));
       setShareEmail('');
       setShowShareForm(false);
       if (onRefresh) await onRefresh();
     } catch (err) {
       setErrorMessage(err.message);
+    } finally {
+      stopLoading();
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Are you sure you want to permanently delete "${item.nickname}"? This action cannot be undone.`)) {
-      return;
-    }
-
     setErrorMessage('');
+    startLoading();
     try {
       const res = await fetch(`/api/credentials/${item.id}`, {
         method: 'DELETE',
@@ -254,7 +284,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
 
       if (!res.ok) throw new Error(data.error || 'Failed to delete credential');
       
-      alert('Credential deleted successfully.');
+      showToast('Credential deleted successfully.', 'success');
       if (onRefresh) {
         await onRefresh();
       } else {
@@ -262,6 +292,9 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
       }
     } catch (err) {
       setErrorMessage(err.message);
+      showToast(err.message);
+    } finally {
+      stopLoading();
     }
   };
 
@@ -287,12 +320,11 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
                 <span style={{ fontWeight: '500' }}>Type:</span> {item.subcategory}
               </p>}
               {!isCard && !isIdentity && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096' }}>
-                <span style={{ fontWeight: '500' }}>Login:</span> {item.login_id}
+                <span style={{ fontWeight: '500' }}>Login:</span> {decryptedMetadata.login_id || 'Protected'}
               </p>}
               {!isCard && !isIdentity && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096', wordBreak: 'break-all' }}>
-                <span style={{ fontWeight: '500' }}>URL:</span> <a href={item.web_url} target="_blank" rel="noreferrer" style={{ color: '#3182ce', textDecoration: 'none' }}>{item.web_url}</a>
+                <span style={{ fontWeight: '500' }}>URL:</span> Protected until reveal
               </p>}
-              {item.description && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#4a5568' }}>{item.description}</p>}
               {isSharedView && <p style={{ margin: '6px 0 0 0', fontSize: 'clamp(11px, 2.5vw, 12px)', color: '#3182ce', fontWeight: '500' }}>📤 Shared by: {item.shared_by}</p>}
               {!isSharedView && item.shared_with && <p style={{ margin: '6px 0 0 0', fontSize: 'clamp(11px, 2.5vw, 12px)', color: '#3182ce', fontWeight: '500' }}>📤 Shared with: {item.shared_with}</p>}
             </div>
@@ -403,7 +435,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
                 </button>
                 {!isSharedView && <button
                   onClick={() => {
-                    handleDelete();
+                    setShowDeleteConfirm(true);
                     setShowMenu(false);
                   }}
                   style={{
@@ -433,13 +465,13 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
 
         {showEditUnlock && (
           <form onSubmit={unlockEdit} style={editUnlockStyle}>
-            <strong style={{ color: '#1f2937', fontSize: '13px' }}>Enter PIN to edit</strong>
+            <strong style={{ color: '#1f2937', fontSize: '13px' }}>Enter Decrypting PIN to edit</strong>
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <input
                 type={showEditUnlockPin ? 'text' : 'password'}
                 value={editUnlockPin}
                 onChange={(event) => setEditUnlockPin(event.target.value)}
-                placeholder="PIN"
+                placeholder="Decrypting PIN"
                 required
                 autoFocus
                 style={{ ...editFieldStyle, marginTop: 0, paddingRight: '36px' }}
@@ -453,6 +485,19 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
               <button type="button" onClick={() => setShowEditUnlock(false)} style={smallCancelButtonStyle}>Cancel</button>
             </div>
           </form>
+        )}
+
+        {showDeleteConfirm && (
+          <div style={confirmOverlayStyle}>
+            <div style={confirmDialogStyle} role="dialog" aria-modal="true">
+              <strong>Delete this item?</strong>
+              <p style={{ margin: '8px 0', color: '#64748b', fontSize: '13px' }}>This action cannot be undone.</p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button type="button" onClick={() => setShowDeleteConfirm(false)} style={smallCancelButtonStyle}>Cancel</button>
+                <button type="button" onClick={() => { setShowDeleteConfirm(false); handleDelete(); }} style={smallDangerButtonStyle}>Delete</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Share Form */}
@@ -487,7 +532,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1 }}>
               <input 
                 type={showRevealPin ? 'text' : 'password'}
-                placeholder="Enter PIN" 
+                placeholder="Enter Decrypting PIN" 
                 inputMode={item.category === 'Cards' ? 'numeric' : undefined}
                 pattern={item.category === 'Cards' ? '[0-9]+' : undefined}
                 value={pin} 
@@ -526,12 +571,12 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
                   <p style={revealDetailStyle}>Identity Number: <code style={revealCodeStyle}>{decryptedPassword}</code></p>
                 ) : (
                   <>
-                <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500', wordBreak: 'break-all' }}>Website: {item.web_url}</p>
-                <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500', wordBreak: 'break-all' }}>Login ID: {item.login_id}</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500', wordBreak: 'break-all' }}>Website: {decryptedMetadata.web_url}</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500', wordBreak: 'break-all' }}>Login ID: {decryptedMetadata.login_id}</p>
                 <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Password: <code style={{ fontSize: '13px', color: '#2d3748', wordBreak: 'break-all' }}>{decryptedPassword}</code></p>
                   </>
                 )}
-                {item.description && <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Description: {item.description}</p>}
+                {decryptedMetadata.description && <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Description: {decryptedMetadata.description}</p>}
                 {isSharedView && <p style={{ margin: 0, fontSize: '12px', color: '#22543d', fontWeight: '500' }}>Shared by: {item.shared_by}</p>}
                 </div>
                 <div style={{ flexShrink: 0, marginLeft: 'auto' }}>
@@ -617,7 +662,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
               </div>
             </label>
             <label style={{ fontSize: '12px', color: '#4a5568' }}>
-              PIN (for re-encryption):
+              Encrypting PIN:
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <input type={showEditPin ? 'text' : 'password'} value={pin} onChange={(e) => setPin(e.target.value)} required minLength={4} style={{ ...editFieldStyle, paddingRight: '36px' }} />
                 <button type="button" onClick={() => setShowEditPin(!showEditPin)} style={eyeButtonStyle}>{showEditPin ? '🙈' : '👁️'}</button>
@@ -625,7 +670,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
             </label>
           </>}
           {!isCard && <label style={{ fontSize: '12px', color: '#4a5568' }}>
-            PIN (for re-encryption):
+            Encrypting PIN:
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <input type={showEditPin ? 'text' : 'password'} value={pin} onChange={(e) => setPin(e.target.value)} required minLength={4} style={{ ...editFieldStyle, paddingRight: '36px' }} />
               <button type="button" onClick={() => setShowEditPin(!showEditPin)} style={eyeButtonStyle}>{showEditPin ? '🙈' : '👁️'}</button>
@@ -654,6 +699,9 @@ const eyeButtonStyle = { position: 'absolute', right: '8px', border: 'none', bac
 const editUnlockStyle = { marginTop: '12px', padding: '12px', display: 'grid', gap: '8px', border: '1px solid #bfdbfe', borderRadius: '8px', background: '#eff6ff' };
 const smallPrimaryButtonStyle = { padding: '7px 12px', border: 'none', borderRadius: '6px', background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: '12px', fontWeight: '600' };
 const smallCancelButtonStyle = { padding: '7px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#fff', color: '#475569', cursor: 'pointer', fontSize: '12px' };
+const smallDangerButtonStyle = { ...smallPrimaryButtonStyle, background: '#dc2626' };
+const confirmOverlayStyle = { position: 'fixed', inset: 0, zIndex: 450, display: 'grid', placeItems: 'center', padding: '20px', background: 'rgba(15, 23, 42, 0.35)' };
+const confirmDialogStyle = { width: '100%', maxWidth: '340px', padding: '18px', borderRadius: '12px', background: '#fff', boxShadow: '0 18px 40px rgba(15, 23, 42, 0.2)', color: '#1f2937' };
 const countdownStyle = (seconds) => ({
   width: '42px',
   height: '42px',

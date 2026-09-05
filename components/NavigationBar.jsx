@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { startLoading, stopLoading } from '@/lib/loading';
 
 export default function NavigationBar({ user, activeView = 'vault', onViewChange, sharedWithMeCount = 0, sharedByMeCount = 0 }) {
   const navRef = useRef(null);
@@ -41,7 +42,11 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
   }, []);
 
   const handleSelect = (viewId) => {
-    if (onViewChange) onViewChange(viewId);
+    if (viewId === 'vault' && window.location.pathname !== '/dashboard') {
+      window.location.assign('/dashboard');
+    } else if (onViewChange) {
+      onViewChange(viewId);
+    }
     setIsOpen(false);
   };
 
@@ -55,6 +60,7 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
     event.preventDefault();
     setIsSavingProfile(true);
     setProfileMessage('');
+    startLoading();
 
     try {
       const response = await fetch('/api/profile', {
@@ -70,6 +76,7 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
       setProfileMessage(error.message);
     } finally {
       setIsSavingProfile(false);
+      stopLoading();
     }
   };
 

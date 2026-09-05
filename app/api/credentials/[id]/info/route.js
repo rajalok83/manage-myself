@@ -1,6 +1,6 @@
 // /home/notroot/projects/manage-myself/app/api/credentials/[id]/decrypt/route.js
 
-import { turso, getSessionUser } from '@/lib/turso';
+import { turso, getSessionUser, ensureCredentialMetadataColumns } from '@/lib/turso';
 import { NextResponse } from 'next/server';
 
 export async function GET(req, { params }) {
@@ -11,11 +11,13 @@ export async function GET(req, { params }) {
   const { id } = await params; 
 
   try {
+    await ensureCredentialMetadataColumns();
     // 2. CRITICAL FIX: REMOVE the "await req.json()" line that was causing the 400 error.
     
     // Verify if the user owns the credential or if it has been shared with them
     const recordQuery = await turso.execute({
-      sql: `SELECT c.encrypted_password, c.salt, c.iv, c.owner_id
+      sql: `SELECT c.encrypted_password, c.salt, c.iv, c.owner_id,
+           c.encrypted_metadata, c.metadata_salt, c.metadata_iv
             FROM credentials c
             LEFT JOIN credential_shares s ON c.id = s.credential_id AND s.shared_with_user_id = ?
             WHERE c.id = ? AND (c.owner_id = ? OR s.shared_with_user_id = ?)`,
@@ -46,10 +48,12 @@ export async function POST(req, { params }) {
 
   const { id } = await params;
   try {
+    await ensureCredentialMetadataColumns();
     const access = await turso.execute({
-      sql: `SELECT c.category, c.owner_id, s.shared_with_user_id, ca.subcategory, ca.nickname,
-                   ca.encrypted_details, ca.salt, ca.iv, c.description
-            FROM credentials c JOIN cards ca ON ca.credential_id = c.id
+       sql: `SELECT c.category, c.owner_id, s.shared_with_user_id, c.subcategory, c.nickname,
+         c.encrypted_details, c.salt, c.iv,
+           c.encrypted_metadata, c.metadata_salt, c.metadata_iv
+            FROM credentials c
             LEFT JOIN credential_shares s ON c.id = s.credential_id AND s.shared_with_user_id = ?
             WHERE c.id = ? AND (c.owner_id = ? OR s.shared_with_user_id = ?)`,
       args: [user.id, id, user.id, user.id]
@@ -57,11 +61,16 @@ export async function POST(req, { params }) {
     if (!access.rows.length) return NextResponse.json({ error: 'Access denied or card not found.' }, { status: 403 });
 
     const row = access.rows[0];
+    if (row.category !== 'Cards' || !row.encrypted_details || !row.salt || !row.iv) {
+      return NextResponse.json({ error: 'Card details are unavailable for this credential.' }, { status: 422 });
+    }
     return NextResponse.json({
       card: {
         subcategory: row.subcategory,
         nickname: row.nickname,
-        description: row.description,
+        encrypted_metadata: row.encrypted_metadata,
+        metadata_salt: row.metadata_salt,
+        metadata_iv: row.metadata_iv,
         encrypted_details: row.encrypted_details,
         salt: row.salt,
         iv: row.iv

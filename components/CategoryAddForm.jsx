@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { encryptData } from '@/lib/crypto';
+import { startLoading, stopLoading } from '@/lib/loading';
 
 export default function CategoryAddForm({ subCategories = [], category, onSuccess, onClose }) {
   const [form, setForm] = useState({
@@ -37,6 +38,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
     event.preventDefault();
     setIsSaving(true);
     setMessage('');
+    startLoading();
 
     try {
       if (category === 'Cards') {
@@ -47,7 +49,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
           ['CVV', form.cvv],
           ['expiry date', form.expiryDate],
           ['name on card', form.nameOnCard],
-          ['PIN', form.pin],
+          ['Encrypting PIN', form.pin],
           ['Card PIN', form.cardPin]
         ].filter(([, value]) => !String(value || '').trim()).map(([label]) => label);
 
@@ -57,7 +59,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
       } else if (isIdentity) {
         const missingFields = [
           ['identity number', form.identityNumber],
-          ['PIN', form.pin]
+          ['Encrypting PIN', form.pin]
         ].filter(([, value]) => !String(value || '').trim()).map(([label]) => label);
 
         if (missingFields.length > 0) {
@@ -69,10 +71,17 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
         category: form.category,
         subcategory: form.subcategory,
         nickname: form.nickname,
+      };
+      const metadata = encryptData(JSON.stringify({
         web_url: form.web_url,
         login_id: form.login_id,
-        description: form.description,
-      };
+        description: form.description
+      }), form.pin);
+      Object.assign(securePayload, {
+        encrypted_metadata: metadata.encryptedData,
+        metadata_salt: metadata.salt,
+        metadata_iv: metadata.iv
+      });
 
       if (category === 'Cards') {
         const encryptedCard = encryptData(JSON.stringify({
@@ -140,6 +149,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
       setMessage(error.message);
     } finally {
       setIsSaving(false);
+      stopLoading();
     }
   };
 
@@ -223,6 +233,30 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
           </div>
         </div>}
 
+        {category === 'Cards' && (
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>Card PIN</span>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+              type={showCardPin ? 'text' : 'password'}
+              inputMode="numeric"
+              pattern="[0-9]+"
+              placeholder="Card PIN"
+              value={form.cardPin}
+              onChange={(e) => handleChange('cardPin', e.target.value)}
+              onKeyDown={(event) => {
+                if (!/[0-9]/.test(event.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(event.key)) event.preventDefault();
+              }}
+              required
+              style={{ ...fieldStyle, width: '100%', paddingRight: '40px', boxSizing: 'border-box' }}
+              />
+              <button type="button" onClick={() => setShowCardPin(!showCardPin)} style={eyeButtonStyle}>
+                {showCardPin ? '🙈' : '👁️'}
+              </button>
+            </div>
+          </label>
+        )}
+
         {isIdentity && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
             <span style={{ fontWeight: '600' }}>Identity Number</span>
@@ -243,13 +277,14 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
 
         {/* PIN encrypts the credential. Cards also have a separate encrypted Card PIN. */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
-          <span style={{ fontWeight: '600' }}>PIN</span>
+          <span style={{ fontWeight: '600' }}>Encrypting PIN</span>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <input 
               type={showPin ? 'text' : 'password'}
               inputMode="numeric"
               pattern="[0-9]+"
               value={form.pin} 
+              placeholder="Encrypting PIN"
               onChange={(e) => handleChange('pin', e.target.value)} 
               required
               onKeyDown={(event) => {
@@ -267,30 +302,6 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
             </button>
           </div>
         </div>
-
-        {category === 'Cards' && (
-          <label style={fieldLabelStyle}>
-            <span style={{ fontWeight: '600' }}>Card PIN</span>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <input
-              type={showCardPin ? 'text' : 'password'}
-              inputMode="numeric"
-              pattern="[0-9]+"
-              placeholder="Numeric Card PIN"
-              value={form.cardPin}
-              onChange={(e) => handleChange('cardPin', e.target.value)}
-              onKeyDown={(event) => {
-                if (!/[0-9]/.test(event.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(event.key)) event.preventDefault();
-              }}
-              required
-              style={{ ...fieldStyle, width: '100%', paddingRight: '40px', boxSizing: 'border-box' }}
-              />
-              <button type="button" onClick={() => setShowCardPin(!showCardPin)} style={eyeButtonStyle}>
-                {showCardPin ? '🙈' : '👁️'}
-              </button>
-            </div>
-          </label>
-        )}
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', gridColumn: '1 / -1' }}>
           <span style={{ fontWeight: '600' }}>Description</span>

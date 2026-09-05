@@ -1,4 +1,4 @@
-import { turso, getSessionUser } from '@/lib/turso';
+import { turso, getSessionUser, ensureCredentialMetadataColumns } from '@/lib/turso';
 import { NextResponse } from 'next/server';
 
 export async function POST(req) {
@@ -6,7 +6,8 @@ export async function POST(req) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { category, subcategory, nickname, web_url, login_id, encrypted_password, encrypted_details, salt, iv, description } = await req.json();
+    await ensureCredentialMetadataColumns();
+    const { category, subcategory, nickname, encrypted_password, encrypted_details, encrypted_metadata, metadata_salt, metadata_iv, salt, iv } = await req.json();
 
     try {
       await turso.execute('ALTER TABLE credentials ADD COLUMN subcategory TEXT');
@@ -33,25 +34,10 @@ export async function POST(req) {
       });
       if (duplicateCheck.rows.length > 0) return NextResponse.json({ error: 'This nickname is already in use.' }, { status: 400 });
 
-      await turso.execute(`CREATE TABLE IF NOT EXISTS cards (
-        credential_id INTEGER PRIMARY KEY,
-        subcategory TEXT NOT NULL,
-        nickname TEXT NOT NULL,
-        encrypted_details TEXT NOT NULL,
-        salt TEXT NOT NULL,
-        iv TEXT NOT NULL,
-        FOREIGN KEY (credential_id) REFERENCES credentials(id) ON DELETE CASCADE
-      )`);
       const credential = await turso.execute({
-        sql: `INSERT INTO credentials (owner_id, category, nickname, web_url, login_id, encrypted_password, salt, iv, description)
-              VALUES (?, 'Cards', ?, '', '', '', '', '', ?)`,
-        args: [user.id, nickname, description || '']
-      });
-      const credentialId = credential.lastInsertRowid;
-      await turso.execute({
-        sql: `INSERT INTO cards (credential_id, subcategory, nickname, encrypted_details, salt, iv)
-              VALUES (?, ?, ?, ?, ?, ?)`,
-        args: [credentialId, subcategory, nickname, encrypted_details, salt, iv]
+          sql: `INSERT INTO credentials (owner_id, category, subcategory, nickname, encrypted_metadata, metadata_salt, metadata_iv, encrypted_password, salt, iv, encrypted_details)
+            VALUES (?, 'Cards', ?, ?, ?, ?, ?, '', ?, ?, ?)`,
+          args: [user.id, subcategory, nickname, encrypted_metadata, metadata_salt, metadata_iv, salt, iv, encrypted_details]
       });
       return NextResponse.json({ success: true }, { status: 201 });
     }
@@ -59,7 +45,7 @@ export async function POST(req) {
     const isIdentity = category === 'Identity';
 
     // Identity records do not contain website or login fields.
-    if (!category || !nickname || !encrypted_password || !salt || !iv || (!isIdentity && (!web_url || !login_id))) {
+    if (!category || !nickname || !encrypted_password || !salt || !iv || !encrypted_metadata || !metadata_salt || !metadata_iv) {
       return NextResponse.json({ error: 'Encrypted credential fields are required.' }, { status: 400 });
     }
 
@@ -73,9 +59,9 @@ export async function POST(req) {
     }
 
     await turso.execute({
-      sql: `INSERT INTO credentials (owner_id, category, subcategory, nickname, web_url, login_id, encrypted_password, salt, iv, description)
+      sql: `INSERT INTO credentials (owner_id, category, subcategory, nickname, encrypted_metadata, metadata_salt, metadata_iv, encrypted_password, salt, iv)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [user.id, category, subcategory || '', nickname, isIdentity ? '' : web_url, isIdentity ? '' : login_id, encrypted_password, salt, iv, description]
+      args: [user.id, category, subcategory || '', nickname, encrypted_metadata, metadata_salt, metadata_iv, encrypted_password, salt, iv]
     });
 
     return NextResponse.json({ success: true }, { status: 201 });

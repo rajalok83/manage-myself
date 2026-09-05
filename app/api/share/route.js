@@ -1,4 +1,4 @@
-import { turso, getSessionUser } from '@/lib/turso';
+import { turso, getSessionUser, ensureCredentialMetadataColumns } from '@/lib/turso';
 import { NextResponse } from 'next/server';
 
 export async function GET(req) {
@@ -6,6 +6,7 @@ export async function GET(req) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
+    await ensureCredentialMetadataColumns();
     try {
       await turso.execute('ALTER TABLE credentials ADD COLUMN subcategory TEXT');
     } catch (error) {
@@ -14,8 +15,8 @@ export async function GET(req) {
 
     // 1. Fetch credentials shared WITH the current user
     const sharedWithMe = await turso.execute({
-      sql: `SELECT c.id, c.category, c.nickname, c.web_url, c.login_id, c.description,
-           COALESCE(c.subcategory, (SELECT subcategory FROM cards WHERE credential_id = c.id)) AS subcategory,
+      sql: `SELECT c.id, c.category, c.nickname,
+           c.subcategory AS subcategory,
            u.email as shared_by
             FROM credentials c
             JOIN credential_shares s ON c.id = s.credential_id
@@ -26,8 +27,8 @@ export async function GET(req) {
 
     // 2. Fetch credentials that the current user is sharing OUT to others
     const sharedByMe = await turso.execute({
-      sql: `SELECT c.id, c.nickname, c.category, c.description,
-           COALESCE(c.subcategory, (SELECT subcategory FROM cards WHERE credential_id = c.id)) AS subcategory,
+      sql: `SELECT c.id, c.nickname, c.category,
+           c.subcategory AS subcategory,
            u.email as shared_with
             FROM credential_shares s
             JOIN credentials c ON s.credential_id = c.id
