@@ -8,6 +8,12 @@ export async function POST(req) {
   try {
     const { category, subcategory, nickname, web_url, login_id, encrypted_password, encrypted_details, salt, iv, description } = await req.json();
 
+    try {
+      await turso.execute('ALTER TABLE credentials ADD COLUMN subcategory TEXT');
+    } catch (error) {
+      if (!error.message?.includes('duplicate column name')) throw error;
+    }
+
     if (category === 'Cards') {
       const cardValues = {
         'card type': subcategory,
@@ -50,8 +56,10 @@ export async function POST(req) {
       return NextResponse.json({ success: true }, { status: 201 });
     }
 
-    // Validate Nickname Uniqueness across this specific profile scope
-    if (!category || !nickname || !web_url || !login_id || !encrypted_password || !salt || !iv) {
+    const isIdentity = category === 'Identity';
+
+    // Identity records do not contain website or login fields.
+    if (!category || !nickname || !encrypted_password || !salt || !iv || (!isIdentity && (!web_url || !login_id))) {
       return NextResponse.json({ error: 'Encrypted credential fields are required.' }, { status: 400 });
     }
 
@@ -65,9 +73,9 @@ export async function POST(req) {
     }
 
     await turso.execute({
-      sql: `INSERT INTO credentials (owner_id, category, nickname, web_url, login_id, encrypted_password, salt, iv, description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [user.id, category, nickname, web_url, login_id, encrypted_password, salt, iv, description]
+      sql: `INSERT INTO credentials (owner_id, category, subcategory, nickname, web_url, login_id, encrypted_password, salt, iv, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [user.id, category, subcategory || '', nickname, isIdentity ? '' : web_url, isIdentity ? '' : login_id, encrypted_password, salt, iv, description]
     });
 
     return NextResponse.json({ success: true }, { status: 201 });

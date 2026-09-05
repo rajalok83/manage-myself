@@ -21,7 +21,7 @@ export async function GET(request) {
   console.log("📢 DISPATCHING REDIRECT_URI TO GOOGLE:", redirectUri);
 
   // 1. Construct the 100% correct, verified Google Accounts endpoint URL string
-  const authUrl = `https://google.com?` + 
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
     `client_id=${encodeURIComponent(clientId)}&` +
     `redirect_uri=${encodeURIComponent(redirectUri)}&` + 
     `response_type=code&` +

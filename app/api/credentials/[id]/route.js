@@ -71,26 +71,52 @@ export async function PUT(req, { params }) {
 
   try {
     const { id } = await params; // Wrapped in await for Next.js 15+ safety
+    try {
+      await turso.execute('ALTER TABLE credentials ADD COLUMN subcategory TEXT');
+    } catch (error) {
+      if (!error.message?.includes('duplicate column name')) throw error;
+    }
     
     // UPDATED: Expects pre-packaged payload values from the client component
-    const { nickname, web_url, login_id, encrypted_password, salt, iv, description } = await req.json();
+    const { nickname, subcategory, web_url, login_id, encrypted_password, encrypted_details, salt, iv, description } = await req.json();
 
     // Verify ownership
     const credential = await turso.execute({
-      sql: 'SELECT owner_id FROM credentials WHERE id = ?',
-      args: [id]
+      sql: `SELECT c.owner_id, c.category,
+                   EXISTS(SELECT 1 FROM credential_shares s WHERE s.credential_id = c.id AND s.shared_with_user_id = ?) AS is_shared
+            FROM credentials c WHERE c.id = ?`,
+      args: [user.id, id]
     });
 
-    if (credential.rows.length === 0 || credential.rows[0].owner_id !== user.id) {
+    if (credential.rows.length === 0 || (credential.rows[0].owner_id !== user.id && !credential.rows[0].is_shared)) {
       return NextResponse.json({ error: 'Unauthorized access.' }, { status: 403 });
+    }
+
+    const recordCategory = credential.rows[0].category;
+    if (recordCategory === 'Cards') {
+      await turso.execute({
+        sql: 'UPDATE credentials SET nickname = ?, subcategory = ?, description = ? WHERE id = ?',
+        args: [nickname, subcategory || '', description || '', id]
+      });
+      await turso.execute({
+        sql: `UPDATE cards SET subcategory = ?, nickname = ?, encrypted_details = COALESCE(?, encrypted_details), salt = COALESCE(?, salt), iv = COALESCE(?, iv)
+              WHERE credential_id = ?`,
+        args: [subcategory || '', nickname, encrypted_details || null, encrypted_details ? salt : null, encrypted_details ? iv : null, id]
+      });
+      return NextResponse.json({ success: true, message: 'Card updated successfully!' }, { status: 200 });
+    }
+
+    const isIdentity = recordCategory === 'Identity';
+    if (!nickname || !encrypted_password || !salt || !iv || (!isIdentity && (!web_url || !login_id))) {
+      return NextResponse.json({ error: 'Required credential fields are missing.' }, { status: 400 });
     }
 
     // Update the credential using the new client-supplied cryptographic hashes
     await turso.execute({
       sql: `UPDATE credentials 
-            SET nickname = ?, web_url = ?, login_id = ?, encrypted_password = ?, salt = ?, iv = ?, description = ?
-            WHERE id = ? AND owner_id = ?`,
-      args: [nickname, web_url, login_id, encrypted_password, salt, iv, description || '', id, user.id]
+        SET nickname = ?, subcategory = ?, web_url = ?, login_id = ?, encrypted_password = ?, salt = ?, iv = ?, description = ?
+            WHERE id = ?`,
+          args: [nickname, subcategory || '', isIdentity ? '' : web_url, isIdentity ? '' : login_id, encrypted_password, salt, iv, description || '', id]
     });
 
     return NextResponse.json({ success: true, message: 'Credential updated successfully!' }, { status: 200 });

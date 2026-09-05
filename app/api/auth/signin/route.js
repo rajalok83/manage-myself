@@ -24,7 +24,7 @@ export async function GET(request) {
     `redirect_uri=${encodeURIComponent(redirectUri)}&` +
     `response_type=code&` +
     `scope=openid%20email%20profile&` +  
-    `prompt=select_account%20consent&` + // Forces Google to clear past caches and show selector UI
+    `prompt=select_account&` +
     `state=${csrfState}&` +
     `access_type=offline`;
 

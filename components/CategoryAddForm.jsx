@@ -11,6 +11,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
     web_url: '',
     login_id: '',
     password: '',
+    identityNumber: '',
     pin: '',
     cardPin: '',
     cardNumber: '',
@@ -26,6 +27,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
   const [showPassword, setShowPassword] = useState(false);
   const [showPin, setShowPin] = useState(false);
   const [showCardPin, setShowCardPin] = useState(false);
+  const isIdentity = category === 'Identity';
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -47,6 +49,15 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
           ['name on card', form.nameOnCard],
           ['PIN', form.pin],
           ['Card PIN', form.cardPin]
+        ].filter(([, value]) => !String(value || '').trim()).map(([label]) => label);
+
+        if (missingFields.length > 0) {
+          throw new Error(`Enter: ${missingFields.join(', ')}.`);
+        }
+      } else if (isIdentity) {
+        const missingFields = [
+          ['identity number', form.identityNumber],
+          ['PIN', form.pin]
         ].filter(([, value]) => !String(value || '').trim()).map(([label]) => label);
 
         if (missingFields.length > 0) {
@@ -77,7 +88,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
           iv: encryptedCard.iv
         });
       } else {
-        const encryptedCredential = encryptData(form.password, form.pin);
+        const encryptedCredential = encryptData(isIdentity ? form.identityNumber : form.password, form.pin);
         Object.assign(securePayload, {
           encrypted_password: encryptedCredential.encryptedData,
           salt: encryptedCredential.salt,
@@ -105,6 +116,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
         web_url: '',
         login_id: '',
         password: '',
+        identityNumber: '',
         pin: '',
         cardPin: '',
         cardNumber: '',
@@ -176,7 +188,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
           </>
         )}
 
-        {category !== 'Cards' && (
+        {category !== 'Cards' && !isIdentity && (
           <>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
               <span style={{ fontWeight: '600' }}>Website URL</span>
@@ -191,7 +203,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
         )}
 
         {/* Password input wrapper with Eye Icon toggle */}
-        {category !== 'Cards' && <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
+        {category !== 'Cards' && !isIdentity && <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
           <span style={{ fontWeight: '600' }}>Password</span>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <input 
@@ -211,20 +223,38 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
           </div>
         </div>}
 
+        {isIdentity && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
+            <span style={{ fontWeight: '600' }}>Identity Number</span>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={form.identityNumber}
+                onChange={(e) => handleChange('identityNumber', e.target.value)}
+                required
+                style={{ ...fieldStyle, width: '100%', paddingRight: '40px', boxSizing: 'border-box' }}
+              />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} style={eyeButtonStyle}>
+                {showPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* PIN encrypts the credential. Cards also have a separate encrypted Card PIN. */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
           <span style={{ fontWeight: '600' }}>PIN</span>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <input 
-              type={category === 'Cards' ? 'text' : (showPin ? "text" : "password")} 
-              inputMode={category === 'Cards' ? 'numeric' : undefined}
-              pattern={category === 'Cards' ? '[0-9]+' : undefined}
+              type={showPin ? 'text' : 'password'}
+              inputMode="numeric"
+              pattern="[0-9]+"
               value={form.pin} 
               onChange={(e) => handleChange('pin', e.target.value)} 
               required
-              onKeyDown={category === 'Cards' ? (event) => {
+              onKeyDown={(event) => {
                 if (!/[0-9]/.test(event.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(event.key)) event.preventDefault();
-              } : undefined}
+              }}
               minLength={4} 
               style={{ ...fieldStyle, width: '100%', paddingRight: '40px', boxSizing: 'border-box' }} 
             />
@@ -241,7 +271,8 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
         {category === 'Cards' && (
           <label style={fieldLabelStyle}>
             <span style={{ fontWeight: '600' }}>Card PIN</span>
-            <input
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
               type={showCardPin ? 'text' : 'password'}
               inputMode="numeric"
               pattern="[0-9]+"
@@ -252,11 +283,12 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
                 if (!/[0-9]/.test(event.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(event.key)) event.preventDefault();
               }}
               required
-              style={fieldStyle}
-            />
-            <button type="button" onClick={() => setShowCardPin(!showCardPin)} style={eyeButtonStyle}>
-              {showCardPin ? '🙈' : '👁️'}
-            </button>
+              style={{ ...fieldStyle, width: '100%', paddingRight: '40px', boxSizing: 'border-box' }}
+              />
+              <button type="button" onClick={() => setShowCardPin(!showCardPin)} style={eyeButtonStyle}>
+                {showCardPin ? '🙈' : '👁️'}
+              </button>
+            </div>
           </label>
         )}
 

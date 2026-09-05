@@ -23,9 +23,10 @@ export async function GET(request) {
     const clientSecret = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
     const redirectUri = getGoogleRedirectUri(request);
 
-    // Extract temporary state tracker cookie safely
-    const cookieHeader = request.headers.get('cookie') || '';
-    const stateCookie = cookieHeader.match(/oauth_state=([^;]+)/)?.[1];
+    const stateCookie = request.cookies.get('oauth_state')?.value;
+    if (!incomingState || !stateCookie || incomingState !== stateCookie) {
+      return NextResponse.json({ error: 'Invalid OAuth state.' }, { status: 400 });
+    }
 
     // Assemble the body values payload explicitly as url-encoded forms
         // Ensure the payload values match standard application/x-www-form-urlencoded specifications
@@ -97,8 +98,8 @@ export async function GET(request) {
     crypto.getRandomValues(sessionArray);
     const sessionToken = Array.from(sessionArray, byte => byte.toString(16).padStart(2, '0')).join('');
     
-    const oneWeekInSeconds = 60 * 60 * 24 * 7;
-    const expiresAt = Math.floor(Date.now() / 1000) + oneWeekInSeconds;
+    const sessionDurationInSeconds = 60 * 60 * 24 * 30;
+    const expiresAt = Math.floor(Date.now() / 1000) + sessionDurationInSeconds;
 
     await turso.execute({
       sql: 'INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)',
@@ -116,7 +117,7 @@ export async function GET(request) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', 
       sameSite: 'lax',
-      maxAge: oneWeekInSeconds,
+      maxAge: sessionDurationInSeconds,
       path: '/',
     });
 

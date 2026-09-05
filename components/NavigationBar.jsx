@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
 export default function NavigationBar({ user, activeView = 'vault', onViewChange, sharedWithMeCount = 0, sharedByMeCount = 0 }) {
+  const navRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
   const [profileMode, setProfileMode] = useState(null);
   const [profile, setProfile] = useState({
@@ -17,9 +18,26 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
   const [sharedByMeTotal, setSharedByMeTotal] = useState(sharedByMeCount);
 
   useEffect(() => {
+    setSharedWithMeTotal(sharedWithMeCount);
+    setSharedByMeTotal(sharedByMeCount);
+  }, [sharedWithMeCount, sharedByMeCount]);
+
+  useEffect(() => {
     const handleCredentialShared = () => setSharedByMeTotal((count) => count + 1);
     window.addEventListener('credential-shared', handleCredentialShared);
     return () => window.removeEventListener('credential-shared', handleCredentialShared);
+  }, []);
+
+  useEffect(() => {
+    const closeNavbarOutside = (event) => {
+      if (!navRef.current?.contains(event.target)) {
+        setIsOpen(false);
+        setProfileMode(null);
+      }
+    };
+
+    document.addEventListener('pointerdown', closeNavbarOutside);
+    return () => document.removeEventListener('pointerdown', closeNavbarOutside);
   }, []);
 
   const handleSelect = (viewId) => {
@@ -62,7 +80,7 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
   ];
 
   return (
-    <nav style={{
+    <nav ref={navRef} style={{
       position: 'fixed',
       top: 0,
       left: 0,
@@ -92,26 +110,10 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
           textDecoration: 'none'
         }}
       >
-        <span aria-hidden="true" style={{ fontSize: '22px', lineHeight: 1 }}>🏠</span>
+        <span aria-hidden="true" style={{ fontSize: '22px', lineHeight: 1 }}>🏠 Manage Myself</span>
       </Link>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <button
-          type="button"
-          onClick={() => handleSelect('shared_with_me')}
-          style={navButtonStyle}
-        >
-          <span aria-hidden="true">📥</span>
-          With Me ({sharedWithMeTotal})
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSelect('shared_by_me')}
-          style={navButtonStyle}
-        >
-          <span aria-hidden="true">📤</span>
-          By Me ({sharedByMeTotal})
-        </button>
       <div style={{ position: 'relative' }}>
         <button
           type="button"

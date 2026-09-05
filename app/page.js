@@ -1,17 +1,10 @@
-'use client'; // Required for UI click processing
+import { getSessionUser } from '../lib/turso';
+import { redirect } from 'next/navigation';
 
-export default function LandingPage() {
-  const handleOAuthDispatch = (e) => {
-    // 1. Force the browser to kill all standard tracking event listeners
-    e.preventDefault();
-    
-    console.log("🚀 FORCING HARD BREAK OUT: Assigning native window replacement location");
-    
-    // 2. FIXED: window.location.assign completely flushes your browser's history frame matrix.
-    // This forces Chrome to treat the request as a physical domain escape command,
-    // bypassing Opaque Response Blocking and forcing Google's login interface to render.
-    window.location.assign('/api/auth/signin');
-  };
+export const dynamic = 'force-dynamic';
+
+export default async function LandingPage() {
+  if (await getSessionUser()) redirect('/dashboard');
 
   return (
     <main style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f7fafc', fontFamily: 'sans-serif', padding: '20px' }}>
@@ -23,7 +16,6 @@ export default function LandingPage() {
         
         <a 
           href="/api/auth/signin"
-          onClick={handleOAuthDispatch}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
             padding: '14px 24px', backgroundColor: '#4285F4', color: '#fff',

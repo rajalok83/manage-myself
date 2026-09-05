@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import NavigationBar from './NavigationBar';
 import SharedManagement from './SharedManagement';
 import CategoryCard from './CategoryCard';
@@ -15,9 +15,40 @@ const cardPalette = [
   { background: '#f3f7f8', accent: '#496a72', border: '#d9e6e8' },
 ];
 
-export default function DashboardClient({ user, categories, sharedByMeRows, sharedWithMeRows, allCredentials = [] }) {
+export default function DashboardClient({ user, categories }) {
   const [activeView, setActiveView] = useState('vault');
   const [modalCategory, setModalCategory] = useState(null);
+  const [allCredentials, setAllCredentials] = useState([]);
+  const [sharedByMeRows, setSharedByMeRows] = useState([]);
+  const [sharedWithMeRows, setSharedWithMeRows] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadDashboard = async () => {
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/dashboard', { cache: 'no-store' });
+      const data = await response.json();
+      if (response.status === 401) {
+        window.location.assign('/');
+        return;
+      }
+      if (!response.ok) throw new Error(data.error || 'Unable to load dashboard.');
+      setAllCredentials(data.credentials || []);
+      setSharedByMeRows(data.sharedByMe || []);
+      setSharedWithMeRows(data.sharedWithMe || []);
+    } catch (loadError) {
+      setError(loadError.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
   
   const categoryCounts = useMemo(() => {
     const counts = {};
@@ -45,6 +76,8 @@ export default function DashboardClient({ user, categories, sharedByMeRows, shar
       />
 
       <main style={{ padding: '76px 16px 16px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+        {error && <p style={{ color: '#e53e3e' }}>{error}</p>}
+        {isLoading && <p style={{ color: '#718096' }}>Loading your vault...</p>}
         {activeView === 'vault' && (
           <section>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '14px' }}>
@@ -55,6 +88,7 @@ export default function DashboardClient({ user, categories, sharedByMeRows, shar
                   count={categoryCounts[cat] || 0}
                   palette={cardPalette[index % cardPalette.length]}
                   onAddClick={(category) => setModalCategory(category)}
+                  onRefresh={loadDashboard}
                 />
               ))}
             </div>
@@ -66,6 +100,7 @@ export default function DashboardClient({ user, categories, sharedByMeRows, shar
             initialSharedByMe={sharedByMeRows}
             initialSharedWithMe={sharedWithMeRows}
             activeTab={activeView}
+            onRefresh={loadDashboard}
           />
         )}
       </main>
@@ -112,7 +147,7 @@ export default function DashboardClient({ user, categories, sharedByMeRows, shar
               category={modalCategory}
               onSuccess={() => {
                 setModalCategory(null);
-                window.location.reload();
+                loadDashboard();
               }}
               onClose={() => setModalCategory(null)}
             />
