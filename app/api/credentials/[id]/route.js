@@ -1,4 +1,4 @@
-import { turso, getSessionUser, ensureCredentialMetadataColumns } from '@/lib/turso';
+import { turso, getSessionUser, ensureCredentialMetadataColumns, ensureCredentialShareColumns } from '@/lib/turso';
 import { NextResponse } from 'next/server';
 
 // 1. GET: Fetch all active credential items belonging to the logged-in profile
@@ -73,6 +73,7 @@ export async function PUT(req, { params }) {
   try {
     const { id } = await params; // Wrapped in await for Next.js 15+ safety
     await ensureCredentialMetadataColumns();
+    await ensureCredentialShareColumns();
     try {
       await turso.execute('ALTER TABLE credentials ADD COLUMN subcategory TEXT');
     } catch (error) {
@@ -85,12 +86,12 @@ export async function PUT(req, { params }) {
     // Verify ownership
     const credential = await turso.execute({
       sql: `SELECT c.owner_id, c.category,
-                   EXISTS(SELECT 1 FROM credential_shares s WHERE s.credential_id = c.id AND s.shared_with_user_id = ?) AS is_shared
+                   (SELECT s.share_mode FROM credential_shares s WHERE s.credential_id = c.id AND s.shared_with_user_id = ?) AS share_mode
             FROM credentials c WHERE c.id = ?`,
       args: [user.id, id]
     });
 
-    if (credential.rows.length === 0 || (credential.rows[0].owner_id !== user.id && !credential.rows[0].is_shared)) {
+    if (credential.rows.length === 0 || (credential.rows[0].owner_id !== user.id && credential.rows[0].share_mode !== 'edit')) {
       return NextResponse.json({ error: 'Unauthorized access.' }, { status: 403 });
     }
 

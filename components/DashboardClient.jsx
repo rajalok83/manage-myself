@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import NavigationBar from './NavigationBar';
 import SharedManagement from './SharedManagement';
 import CategoryCard from './CategoryCard';
@@ -53,6 +53,11 @@ export default function DashboardClient({ user, categories }) {
 
   useEffect(() => {
     loadDashboard();
+  }, []);
+
+  const handleSharesLoaded = useCallback(({ sharedByMe, sharedWithMe }) => {
+    setSharedByMeRows(sharedByMe);
+    setSharedWithMeRows(sharedWithMe);
   }, []);
   
   const categoryCounts = useMemo(() => {
@@ -108,6 +113,7 @@ export default function DashboardClient({ user, categories }) {
             initialSharedWithMe={sharedWithMeRows}
             activeTab={activeView}
             onRefresh={loadDashboard}
+            onSharesLoaded={handleSharesLoaded}
           />
         )}
       </main>

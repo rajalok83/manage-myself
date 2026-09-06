@@ -88,7 +88,7 @@ export default function AddCredentialCard({ categories }) {
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px', color: '#4a5568' }}>
-          <span style={{ fontWeight: '500' }}>PIN (4+ digits)</span>
+          <span style={{ fontWeight: '500' }}>Encrypting PIN (4+ digits)</span>
           <input type="password" value={form.pin} onChange={(event) => handleChange('pin', event.target.value)} required minLength={4} style={{ ...fieldStyle, fontSize: '12px' }} />
         </label>
 

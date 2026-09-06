@@ -5,10 +5,11 @@ import { encryptData, decryptData } from '@/lib/crypto';
 import { showToast } from '@/lib/toast';
 import { startLoading, stopLoading } from '@/lib/loading';
 
-export default function CredentialRow({ item, isSharedView = false, onRefresh }) {
+export default function CredentialRow({ item, isSharedView = false, onRefresh, sharedRecipients = [], onRevokeRecipients }) {
   const rowRef = useRef(null);
   const isCard = item.category === 'Cards';
   const isIdentity = item.category === 'Identity';
+  const canEdit = !isSharedView || item.share_mode === 'edit';
   const subcategoryOptions = {
     Websites: ['Banking', 'Social Media', 'Work Tools', 'Shopping', 'Entertainment', 'Misc'],
     Cards: ['Debit', 'Credit'],
@@ -21,6 +22,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
   const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [shareEmail, setShareEmail] = useState('');
+  const [shareMode, setShareMode] = useState('view');
   const [showMenu, setShowMenu] = useState(false);
   const [showPasswordReveal, setShowPasswordReveal] = useState(false);
   const [showShareForm, setShowShareForm] = useState(false);
@@ -37,6 +39,13 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
   const [showEditUnlockPin, setShowEditUnlockPin] = useState(false);
   const [isUnlockingEdit, setIsUnlockingEdit] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [selectedRecipients, setSelectedRecipients] = useState([]);
+
+  const toggleRecipient = (email) => {
+    setSelectedRecipients((current) => current.includes(email)
+      ? current.filter((recipient) => recipient !== email)
+      : [...current, email]);
+  };
 
   useEffect(() => {
     if (revealSeconds === null) return undefined;
@@ -151,6 +160,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
       }
 
       const data = await res.json();
+      const isOneTimeShare = isSharedView && item.share_mode === 'once';
 
       if (isCard) {
         const cardDetails = JSON.parse(decryptData(data.card.encrypted_details, pin, data.card.salt, data.card.iv));
@@ -162,6 +172,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
         setShowCardPin(false);
         setRevealSeconds(30);
         setShowPasswordReveal(true);
+        if (isOneTimeShare && onRefresh) await onRefresh();
         return;
       }
 
@@ -176,6 +187,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
       setDecryptedPassword(decryptedPassword);
       setRevealSeconds(30);
       setShowPasswordReveal(true);
+      if (isOneTimeShare && onRefresh) await onRefresh();
     } catch (err) {
       setErrorMessage(err.message);
       showToast(`Unable to reveal this item: ${err.message}`);
@@ -254,13 +266,13 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
       const res = await fetch('/api/share', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentialId: item.id, targetEmail: normalizedEmail })
+        body: JSON.stringify({ credentialId: item.id, targetEmail: normalizedEmail, shareMode })
       });
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.error || 'Sharing error occurred');
       
-      showToast('Vault item shared successfully.', 'success');
+      showToast(`Vault item shared for ${shareMode === 'once' ? 'one reveal' : shareMode === 'view' ? 'viewing' : 'editing'}.`, 'success');
       window.dispatchEvent(new CustomEvent('credential-shared'));
       setShareEmail('');
       setShowShareForm(false);
@@ -326,7 +338,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
                 <span style={{ fontWeight: '500' }}>URL:</span> Protected until reveal
               </p>}
               {isSharedView && <p style={{ margin: '6px 0 0 0', fontSize: 'clamp(11px, 2.5vw, 12px)', color: '#3182ce', fontWeight: '500' }}>📤 Shared by: {item.shared_by}</p>}
-              {!isSharedView && item.shared_with && <p style={{ margin: '6px 0 0 0', fontSize: 'clamp(11px, 2.5vw, 12px)', color: '#3182ce', fontWeight: '500' }}>📤 Shared with: {item.shared_with}</p>}
+              {!isSharedView && item.shared_with && !Array.isArray(item.shared_with) && <p style={{ margin: '6px 0 0 0', fontSize: 'clamp(11px, 2.5vw, 12px)', color: '#3182ce', fontWeight: '500' }}>📤 Shared with: {item.shared_with}</p>}
             </div>
           </div>
 
@@ -364,7 +376,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
                 overflow: 'hidden'
               }}>
                 <>
-                    <button
+                    {canEdit && <button
                       onClick={() => {
                         startEdit();
                       }}
@@ -385,7 +397,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                     >
                       ✏️ Edit
-                    </button>
+                    </button>}
                     {!isSharedView && <button
                       onClick={() => {
                         setShowShareForm(!showShareForm);
@@ -460,6 +472,35 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
           </div>
         </div>
 
+        {!isSharedView && sharedRecipients.length > 0 && (
+          <div style={sharedRecipientsStyle}>
+            <div style={sharedRecipientsHeaderStyle}>
+              <strong>Shared with</strong>
+              <button type="button" onClick={() => setSelectedRecipients(selectedRecipients.length === sharedRecipients.length ? [] : sharedRecipients.map((recipient) => recipient.email))} style={smallTextButtonStyle}>
+                {selectedRecipients.length === sharedRecipients.length ? 'Clear all' : 'Select all'}
+              </button>
+            </div>
+            {sharedRecipients.map((recipient) => (
+              <label key={recipient.email} style={sharedRecipientStyle}>
+                <input
+                  type="checkbox"
+                  checked={selectedRecipients.includes(recipient.email)}
+                  onChange={() => toggleRecipient(recipient.email)}
+                />
+                <span>{recipient.email} ({recipient.share_mode === 'edit' ? 'can edit' : recipient.share_mode === 'once' ? 'one-time view' : 'view only'})</span>
+              </label>
+            ))}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button type="button" disabled={selectedRecipients.length === 0} onClick={() => { const recipients = selectedRecipients; setSelectedRecipients([]); onRevokeRecipients(item.id, recipients); }} style={smallDangerButtonStyle}>
+                Remove selected
+              </button>
+              <button type="button" onClick={() => { setSelectedRecipients([]); onRevokeRecipients(item.id, [], true); }} style={smallDangerButtonStyle}>
+                Remove all access
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Error Message */}
         {errorMessage && <p style={{ color: '#e53e3e', fontSize: '12px', marginTop: '10px', marginBottom: 0 }}>{errorMessage}</p>}
 
@@ -511,6 +552,11 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh })
               required 
               style={{ padding: '6px 10px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e0', minWidth: '140px', flex: '1' }}
             />
+            <select value={shareMode} onChange={(e) => setShareMode(e.target.value)} style={{ padding: '6px 8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e0' }} aria-label="Sharing option">
+              <option value="once">Share once</option>
+              <option value="view">View only</option>
+              <option value="edit">View and edit</option>
+            </select>
             <button type="submit" style={{ padding: '6px 10px', fontSize: '12px', backgroundColor: '#3182ce', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}>Share</button>
             <button type="button" onClick={() => setShowShareForm(false)} style={{ padding: '6px 10px', fontSize: '12px', backgroundColor: '#e2e8f0', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
           </form>
@@ -700,6 +746,10 @@ const editUnlockStyle = { marginTop: '12px', padding: '12px', display: 'grid', g
 const smallPrimaryButtonStyle = { padding: '7px 12px', border: 'none', borderRadius: '6px', background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: '12px', fontWeight: '600' };
 const smallCancelButtonStyle = { padding: '7px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#fff', color: '#475569', cursor: 'pointer', fontSize: '12px' };
 const smallDangerButtonStyle = { ...smallPrimaryButtonStyle, background: '#dc2626' };
+const smallTextButtonStyle = { border: 'none', background: 'transparent', color: '#2563eb', cursor: 'pointer', fontSize: '12px', padding: 0 };
+const sharedRecipientsStyle = { marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0', display: 'grid', gap: '8px' };
+const sharedRecipientsHeaderStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#475569', fontSize: '12px' };
+const sharedRecipientStyle = { display: 'flex', alignItems: 'center', gap: '8px', color: '#475569', fontSize: '12px' };
 const confirmOverlayStyle = { position: 'fixed', inset: 0, zIndex: 450, display: 'grid', placeItems: 'center', padding: '20px', background: 'rgba(15, 23, 42, 0.35)' };
 const confirmDialogStyle = { width: '100%', maxWidth: '340px', padding: '18px', borderRadius: '12px', background: '#fff', boxShadow: '0 18px 40px rgba(15, 23, 42, 0.2)', color: '#1f2937' };
 const countdownStyle = (seconds) => ({

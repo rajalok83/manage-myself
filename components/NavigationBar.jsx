@@ -81,7 +81,7 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
   };
 
   const navItems = [
-    { id: 'vault', label: 'My Vault', icon: '🏠' },
+    { id: 'vault', label: 'My Vault', icon: '🔐' },
     { id: 'shared_with_me', label: `Shared With Me (${sharedWithMeTotal})`, icon: '📥' },
     { id: 'shared_by_me', label: `Shared By Me (${sharedByMeTotal})`, icon: '📤' }
   ];
@@ -117,7 +117,7 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
           textDecoration: 'none'
         }}
       >
-        <span aria-hidden="true" style={{ fontSize: '22px', lineHeight: 1 }}>🏠 Manage Myself</span>
+        <span aria-hidden="true" style={{ fontSize: '22px', lineHeight: 1 }}>🔐 Manage Myself</span>
       </Link>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

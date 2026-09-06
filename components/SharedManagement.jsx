@@ -5,7 +5,7 @@ import CredentialRow from './CredentialRow';
 import { showToast } from '@/lib/toast';
 import { startLoading, stopLoading } from '@/lib/loading';
 
-export default function SharedManagement({ initialSharedByMe, initialSharedWithMe, activeTab: parentActiveTab, onRefresh }) {
+export default function SharedManagement({ initialSharedByMe, initialSharedWithMe, activeTab: parentActiveTab, onRefresh, onSharesLoaded }) {
   const [sharedByMe, setSharedByMe] = useState(initialSharedByMe);
   const [sharedWithMe, setSharedWithMe] = useState(initialSharedWithMe);
   const [isLoading, setIsLoading] = useState(false);
@@ -42,8 +42,11 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Unable to load shared credentials.');
         if (!cancelled) {
-          setSharedByMe(data.sharedByMe || []);
-          setSharedWithMe(data.sharedWithMe || []);
+          const nextSharedByMe = data.sharedByMe || [];
+          const nextSharedWithMe = data.sharedWithMe || [];
+          setSharedByMe(nextSharedByMe);
+          setSharedWithMe(nextSharedWithMe);
+          onSharesLoaded?.({ sharedByMe: nextSharedByMe, sharedWithMe: nextSharedWithMe });
         }
       } catch (error) {
         if (!cancelled) setErrorMessage(error.message);
@@ -55,16 +58,16 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
 
     loadShares();
     return () => { cancelled = true; };
-  }, [parentActiveTab]);
+  }, [onSharesLoaded, parentActiveTab]);
 
   // Sends database calls to wipe explicit permission records immediately
-  const handleRevokeShare = async (credentialId, recipientEmail) => {
+  const handleRevokeShare = async (credentialId, recipientEmails = [], revokeAll = false) => {
     startLoading();
     try {
       const res = await fetch('/api/share/revoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentialId, recipientEmail })
+        body: JSON.stringify({ credentialId, recipientEmails, revokeAll })
       });
 
       if (!res.ok) {
@@ -73,7 +76,14 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
       }
 
       // Filter local state instantly on success
-      setSharedByMe(prev => prev.filter(item => !(item.id === credentialId && item.shared_with === recipientEmail)));
+      setSharedByMe((previous) => previous
+        .map((item) => {
+          if (item.id !== credentialId) return item;
+          if (revokeAll) return null;
+          return { ...item, shared_with: item.shared_with.filter((recipient) => !recipientEmails.includes(recipient.email)) };
+        })
+        .filter(Boolean)
+        .filter((item) => item.shared_with.length > 0));
       if (onRefresh) await onRefresh();
       showToast('Access privileges revoked.', 'success');
     } catch (err) {
@@ -110,13 +120,13 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
                     key={`shared-bm-${item.id}-${index}`}
                     style={{ display: 'grid', gap: '6px' }}
                   >
-                    <CredentialRow item={item} isSharedView={false} onRefresh={onRefresh} />
-                    <button 
-                      onClick={() => setRevokeTarget({ id: item.id, email: item.shared_with })}
-                      style={{ padding: '6px 10px', color: '#e53e3e', backgroundColor: '#fff', border: '1px solid #fed7d7', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px', whiteSpace: 'nowrap' }}
-                    >
-                      Revoke Access
-                    </button>
+                    <CredentialRow
+                      item={item}
+                      isSharedView={false}
+                      onRefresh={onRefresh}
+                      sharedRecipients={item.shared_with}
+                      onRevokeRecipients={(id, emails, revokeAll = false) => setRevokeTarget({ id, emails, revokeAll })}
+                    />
                   </div>
                 ))}
               </div>
@@ -127,11 +137,11 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
       {revokeTarget && (
         <div style={confirmOverlayStyle}>
           <div style={confirmDialogStyle} role="dialog" aria-modal="true">
-            <strong>Revoke access?</strong>
-            <p style={{ margin: '8px 0', color: '#64748b', fontSize: '13px' }}>Remove access for {revokeTarget.email}?</p>
+            <strong>{revokeTarget.revokeAll ? 'Remove all access?' : 'Revoke selected access?'}</strong>
+            <p style={{ margin: '8px 0', color: '#64748b', fontSize: '13px' }}>{revokeTarget.revokeAll ? 'Stop sharing this item with everyone?' : `Remove access for ${revokeTarget.emails.length} selected recipient${revokeTarget.emails.length === 1 ? '' : 's'}?`}</p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button type="button" onClick={() => setRevokeTarget(null)} style={smallCancelButtonStyle}>Cancel</button>
-              <button type="button" onClick={async () => { const target = revokeTarget; setRevokeTarget(null); await handleRevokeShare(target.id, target.email); }} style={smallDangerButtonStyle}>Revoke</button>
+              <button type="button" onClick={async () => { const target = revokeTarget; setRevokeTarget(null); await handleRevokeShare(target.id, target.emails, target.revokeAll); }} style={smallDangerButtonStyle}>Revoke</button>
             </div>
           </div>
         </div>

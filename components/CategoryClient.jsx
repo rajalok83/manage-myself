@@ -54,6 +54,13 @@ export default function CategoryClient({ user, categoryName }) {
     return () => { cancelled = true; };
   }, [loadCategory]);
 
+  const handleSharesLoaded = useCallback(({ sharedByMe, sharedWithMe }) => {
+    setSharedByMeRows(sharedByMe);
+    setSharedWithMeRows(sharedWithMe);
+    setSharedByMeCount(sharedByMe.length);
+    setSharedWithMeCount(sharedWithMe.length);
+  }, []);
+
   return (
     <>
       <ToastViewport />
@@ -78,6 +85,7 @@ export default function CategoryClient({ user, categoryName }) {
             initialSharedWithMe={sharedWithMeRows}
             activeTab={activeView}
             onRefresh={loadCategory}
+            onSharesLoaded={handleSharesLoaded}
           />
         )}
       </main>
