@@ -19,7 +19,18 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
     cvv: '',
     expiryDate: '',
     nameOnCard: '',
-    description: ''
+    description: '',
+    markdown: '',
+    provider: '',
+    policyNumber: '',
+    coverageAmount: '',
+    premiumAmount: '',
+    premiumFrequency: 'Annual',
+    startDate: '',
+    endDate: '',
+    counterparty: '',
+    amount: '',
+    cashDate: new Date().toISOString().slice(0, 10)
   });
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -29,9 +40,21 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
   const [showPin, setShowPin] = useState(false);
   const [showCardPin, setShowCardPin] = useState(false);
   const isIdentity = category === 'Identity';
+  const isNotes = category === 'Notes';
+  const isInsurance = category === 'Insurance';
+  const isCash = category === 'Cash';
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const readResponse = async (response, label) => {
+    const body = await response.text();
+    try {
+      return JSON.parse(body);
+    } catch {
+      throw new Error(`${label} returned a non-JSON response (HTTP ${response.status}). Restart the dev server and try again.`);
+    }
   };
 
   const handleSubmit = async (event) => {
@@ -41,6 +64,20 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
     startLoading();
 
     try {
+      if (isNotes) {
+        const response = await fetch('/api/notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, nickname: form.nickname, markdown: form.markdown })
+        });
+        const data = await readResponse(response, 'Notes API');
+        if (!response.ok) throw new Error(data.error || 'Unable to add this note.');
+        setMessage('Note added successfully.');
+        setForm((previous) => ({ ...previous, nickname: '', markdown: '' }));
+        onSuccess?.();
+        return;
+      }
+
       if (category === 'Cards') {
         const missingFields = [
           ['card type', form.subcategory],
@@ -65,25 +102,49 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
         if (missingFields.length > 0) {
           throw new Error(`Enter: ${missingFields.join(', ')}.`);
         }
+      } else if (isInsurance) {
+        const missingFields = [
+          ['provider', form.provider],
+          ['policy number', form.policyNumber],
+          ['coverage amount', form.coverageAmount],
+          ['premium amount', form.premiumAmount],
+          ['start date', form.startDate]
+        ].filter(([, value]) => !String(value || '').trim()).map(([label]) => label);
+        if (missingFields.length > 0) throw new Error(`Enter: ${missingFields.join(', ')}.`);
+      } else if (isCash) {
+        const missingFields = [
+          ['person or organization', form.counterparty],
+          ['amount', form.amount],
+          ['date', form.cashDate]
+        ].filter(([, value]) => !String(value || '').trim()).map(([label]) => label);
+        if (missingFields.length > 0 || Number(form.amount) <= 0) {
+          throw new Error(missingFields.length ? `Enter: ${missingFields.join(', ')}.` : 'Amount must be greater than zero.');
+        }
       }
 
-      const securePayload = {
+      let securePayload = {
         category: form.category,
         subcategory: form.subcategory,
         nickname: form.nickname,
       };
-      const metadata = encryptData(JSON.stringify({
-        web_url: form.web_url,
-        login_id: form.login_id,
-        description: form.description
-      }), form.pin);
-      Object.assign(securePayload, {
-        encrypted_metadata: metadata.encryptedData,
-        metadata_salt: metadata.salt,
-        metadata_iv: metadata.iv
-      });
+      if (isCash) {
+        securePayload.plain_details = { counterparty: form.counterparty, amount: Number(form.amount), date: form.cashDate };
+      } else {
+        const metadata = encryptData(JSON.stringify({
+          web_url: form.web_url,
+          login_id: form.login_id,
+          description: form.description
+        }), form.pin);
+        Object.assign(securePayload, {
+          encrypted_metadata: metadata.encryptedData,
+          metadata_salt: metadata.salt,
+          metadata_iv: metadata.iv
+        });
+      }
 
-      if (category === 'Cards') {
+      if (isCash) {
+        // Cash details intentionally remain plaintext.
+      } else if (category === 'Cards') {
         const encryptedCard = encryptData(JSON.stringify({
           cardNumber: form.cardNumber,
           cvv: form.cvv,
@@ -97,7 +158,20 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
           iv: encryptedCard.iv
         });
       } else {
-        const encryptedCredential = encryptData(isIdentity ? form.identityNumber : form.password, form.pin);
+        const secret = isIdentity
+          ? form.identityNumber
+          : isInsurance
+            ? JSON.stringify({
+                provider: form.provider,
+                policyNumber: form.policyNumber,
+                coverageAmount: form.coverageAmount,
+                premiumAmount: form.premiumAmount,
+                premiumFrequency: form.premiumFrequency,
+                startDate: form.startDate,
+                endDate: form.endDate
+              })
+            : form.password;
+        const encryptedCredential = encryptData(secret, form.pin);
         Object.assign(securePayload, {
           encrypted_password: encryptedCredential.encryptedData,
           salt: encryptedCredential.salt,
@@ -111,7 +185,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
         body: JSON.stringify(securePayload)
       });
 
-      const data = await response.json();
+      const data = await readResponse(response, isCash ? 'Cash API' : 'Credential API');
 
       if (!response.ok) {
         throw new Error(data.error || 'Unable to add this item.');
@@ -132,7 +206,18 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
         cvv: '',
         expiryDate: '',
         nameOnCard: '',
-        description: ''
+        description: '',
+        markdown: '',
+        provider: '',
+        policyNumber: '',
+        coverageAmount: '',
+        premiumAmount: '',
+        premiumFrequency: 'Annual',
+        startDate: '',
+        endDate: '',
+        counterparty: '',
+        amount: '',
+        cashDate: new Date().toISOString().slice(0, 10)
       });
       setShowPassword(false);
       setShowPin(false);
@@ -157,7 +242,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
     <section style={{ marginBottom: '0', padding: '8px 0', backgroundColor: '#fff', borderRadius: '16px' }}>
       <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
         
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
+        {!isNotes && <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
           <span style={{ fontWeight: '600' }}>Subcategory</span>
           <select
             value={form.subcategory}
@@ -170,7 +255,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
               <option key={idx} value={sub}>{sub}</option>
             ))}
           </select>
-        </label>
+        </label>}
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
           <span style={{ fontWeight: '600' }}>Nickname</span>
@@ -198,7 +283,55 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
           </>
         )}
 
-        {category !== 'Cards' && !isIdentity && (
+        {isInsurance && <>
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>Provider</span>
+            <input value={form.provider} onChange={(event) => handleChange('provider', event.target.value)} required style={fieldStyle} />
+          </label>
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>Policy Number</span>
+            <input value={form.policyNumber} onChange={(event) => handleChange('policyNumber', event.target.value)} required style={fieldStyle} />
+          </label>
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>Coverage Amount</span>
+            <input type="number" min="0" step="0.01" value={form.coverageAmount} onChange={(event) => handleChange('coverageAmount', event.target.value)} required style={fieldStyle} />
+          </label>
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>Premium Amount</span>
+            <input type="number" min="0" step="0.01" value={form.premiumAmount} onChange={(event) => handleChange('premiumAmount', event.target.value)} required style={fieldStyle} />
+          </label>
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>Premium Frequency</span>
+            <select value={form.premiumFrequency} onChange={(event) => handleChange('premiumFrequency', event.target.value)} style={fieldStyle}>
+              {['Monthly', 'Quarterly', 'Half-yearly', 'Annual'].map((frequency) => <option key={frequency}>{frequency}</option>)}
+            </select>
+          </label>
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>Start Date</span>
+            <input type="date" value={form.startDate} onChange={(event) => handleChange('startDate', event.target.value)} required style={fieldStyle} />
+          </label>
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>End Date</span>
+            <input type="date" value={form.endDate} onChange={(event) => handleChange('endDate', event.target.value)} style={fieldStyle} />
+          </label>
+        </>}
+
+        {isCash && <>
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>{form.subcategory === 'Lent' ? 'Borrower' : 'Lender'}</span>
+            <input value={form.counterparty} onChange={(event) => handleChange('counterparty', event.target.value)} required style={fieldStyle} />
+          </label>
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>Principal Amount</span>
+            <input type="number" min="0.01" step="0.01" value={form.amount} onChange={(event) => handleChange('amount', event.target.value)} required style={fieldStyle} />
+          </label>
+          <label style={fieldLabelStyle}>
+            <span style={{ fontWeight: '600' }}>Date</span>
+            <input type="date" value={form.cashDate} onChange={(event) => handleChange('cashDate', event.target.value)} required style={fieldStyle} />
+          </label>
+        </>}
+
+        {category !== 'Cards' && !isIdentity && !isInsurance && !isCash && !isNotes && (
           <>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
               <span style={{ fontWeight: '600' }}>Website URL</span>
@@ -213,7 +346,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
         )}
 
         {/* Password input wrapper with Eye Icon toggle */}
-        {category !== 'Cards' && !isIdentity && <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
+        {category !== 'Cards' && !isIdentity && !isInsurance && !isCash && !isNotes && <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
           <span style={{ fontWeight: '600' }}>Password</span>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <input 
@@ -276,7 +409,7 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
         )}
 
         {/* PIN encrypts the credential. Cards also have a separate encrypted Card PIN. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
+        {!isNotes && !isCash && <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', position: 'relative' }}>
           <span style={{ fontWeight: '600' }}>Encrypting PIN</span>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <input 
@@ -301,12 +434,15 @@ export default function CategoryAddForm({ subCategories = [], category, onSucces
               {showPin ? '🙈' : '👁️'}
             </button>
           </div>
-        </div>
+        </div>}
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', gridColumn: '1 / -1' }}>
+        {isNotes ? <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', gridColumn: '1 / -1' }}>
+          <span style={{ fontWeight: '600' }}>Markdown</span>
+          <textarea rows={12} value={form.markdown} onChange={(event) => handleChange('markdown', event.target.value)} required placeholder={'# Heading\n\nWrite your note using Markdown.'} style={{ ...fieldStyle, resize: 'vertical', fontFamily: 'monospace' }} />
+        </label> : <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568', gridColumn: '1 / -1' }}>
           <span style={{ fontWeight: '600' }}>Description</span>
           <textarea rows={2} value={form.description} onChange={(e) => handleChange('description', e.target.value)} style={{ ...fieldStyle, resize: 'vertical' }} />
-        </label>
+        </label>}
 
         <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>

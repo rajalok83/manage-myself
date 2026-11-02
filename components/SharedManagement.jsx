@@ -61,13 +61,13 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
   }, [onSharesLoaded, parentActiveTab]);
 
   // Sends database calls to wipe explicit permission records immediately
-  const handleRevokeShare = async (credentialId, recipientEmails = [], revokeAll = false) => {
+  const handleRevokeShare = async (itemId, recipientEmails = [], revokeAll = false, itemType = 'credential') => {
     startLoading();
     try {
       const res = await fetch('/api/share/revoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentialId, recipientEmails, revokeAll })
+        body: JSON.stringify({ credentialId: itemId, itemType, recipientEmails, revokeAll })
       });
 
       if (!res.ok) {
@@ -78,7 +78,7 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
       // Filter local state instantly on success
       setSharedByMe((previous) => previous
         .map((item) => {
-          if (item.id !== credentialId) return item;
+          if (item.id !== itemId || (item.item_type || 'credential') !== itemType) return item;
           if (revokeAll) return null;
           return { ...item, shared_with: item.shared_with.filter((recipient) => !recipientEmails.includes(recipient.email)) };
         })
@@ -105,7 +105,7 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
               <p style={{ color: '#718096', fontStyle: 'italic', margin: 0 }}>No vault entries have been shared with you yet.</p>
             ) : (
               sharedWithMe.map((item) => (
-                <CredentialRow key={`shared-wm-${item.id}`} item={item} isSharedView={true} onRefresh={onRefresh} />
+                <CredentialRow key={`shared-wm-${item.item_type || 'credential'}-${item.id}`} item={item} isSharedView={true} onRefresh={onRefresh} />
               ))
             )}
           </div>
@@ -117,7 +117,7 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {sharedByMe.map((item, index) => (
                   <div
-                    key={`shared-bm-${item.id}-${index}`}
+                    key={`shared-bm-${item.item_type || 'credential'}-${item.id}-${index}`}
                     style={{ display: 'grid', gap: '6px' }}
                   >
                     <CredentialRow
@@ -125,7 +125,7 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
                       isSharedView={false}
                       onRefresh={onRefresh}
                       sharedRecipients={item.shared_with}
-                      onRevokeRecipients={(id, emails, revokeAll = false) => setRevokeTarget({ id, emails, revokeAll })}
+                      onRevokeRecipients={(id, emails, revokeAll = false, itemType = 'credential') => setRevokeTarget({ id, emails, revokeAll, itemType })}
                     />
                   </div>
                 ))}
@@ -141,7 +141,7 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
             <p style={{ margin: '8px 0', color: '#64748b', fontSize: '13px' }}>{revokeTarget.revokeAll ? 'Stop sharing this item with everyone?' : `Remove access for ${revokeTarget.emails.length} selected recipient${revokeTarget.emails.length === 1 ? '' : 's'}?`}</p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button type="button" onClick={() => setRevokeTarget(null)} style={smallCancelButtonStyle}>Cancel</button>
-              <button type="button" onClick={async () => { const target = revokeTarget; setRevokeTarget(null); await handleRevokeShare(target.id, target.emails, target.revokeAll); }} style={smallDangerButtonStyle}>Revoke</button>
+              <button type="button" onClick={async () => { const target = revokeTarget; setRevokeTarget(null); await handleRevokeShare(target.id, target.emails, target.revokeAll, target.itemType); }} style={smallDangerButtonStyle}>Revoke</button>
             </div>
           </div>
         </div>

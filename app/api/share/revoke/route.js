@@ -1,4 +1,4 @@
-import { turso, getSessionUser } from '@/lib/turso';
+import { turso, getSessionUser, ensureNotesTables } from '@/lib/turso';
 import { NextResponse } from 'next/server';
 
 export async function POST(req) {
@@ -6,11 +6,15 @@ export async function POST(req) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { credentialId, recipientEmail, recipientEmails = [], revokeAll = false } = await req.json();
+    await ensureNotesTables();
+    const { credentialId, itemType = 'credential', recipientEmail, recipientEmails = [], revokeAll = false } = await req.json();
+    if (!['credential', 'note'].includes(itemType)) return NextResponse.json({ error: 'Invalid item type.' }, { status: 400 });
+    const table = itemType === 'note' ? 'notes' : 'credentials';
+    const shareTable = itemType === 'note' ? 'note_shares' : 'credential_shares';
+    const idColumn = itemType === 'note' ? 'note_id' : 'credential_id';
 
-    // Security Check: Verify that the person initiating the revocation owns the parent asset
     const ownerCheck = await turso.execute({
-      sql: "SELECT owner_id FROM credentials WHERE id = ?",
+      sql: `SELECT owner_id FROM ${table} WHERE id = ?`,
       args: [credentialId]
     });
 
@@ -20,7 +24,7 @@ export async function POST(req) {
 
     if (revokeAll) {
       await turso.execute({
-        sql: 'DELETE FROM credential_shares WHERE credential_id = ?',
+        sql: `DELETE FROM ${shareTable} WHERE ${idColumn} = ?`,
         args: [credentialId]
       });
       return NextResponse.json({ success: true });
@@ -45,8 +49,8 @@ export async function POST(req) {
 
     // Delete the connection table row entry parameter matrix mapping values
     await turso.execute({
-      sql: `DELETE FROM credential_shares
-        WHERE credential_id = ? AND shared_with_user_id IN (${targetUser.rows.map(() => '?').join(', ')})`,
+      sql: `DELETE FROM ${shareTable}
+        WHERE ${idColumn} = ? AND shared_with_user_id IN (${targetUser.rows.map(() => '?').join(', ')})`,
       args: [credentialId, ...targetUser.rows.map((row) => row.id)]
     });
 

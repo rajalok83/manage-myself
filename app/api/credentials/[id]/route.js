@@ -1,4 +1,4 @@
-import { turso, getSessionUser, ensureCredentialMetadataColumns, ensureCredentialShareColumns } from '@/lib/turso';
+import { turso, getSessionUser, ensureCredentialMetadataColumns, ensureCredentialShareColumns, ensureCashTransactionsTable } from '@/lib/turso';
 import { NextResponse } from 'next/server';
 
 // 1. GET: Fetch all active credential items belonging to the logged-in profile
@@ -81,7 +81,7 @@ export async function PUT(req, { params }) {
     }
     
     // UPDATED: Expects pre-packaged payload values from the client component
-    const { nickname, subcategory, encrypted_password, encrypted_details, encrypted_metadata, metadata_salt, metadata_iv, salt, iv } = await req.json();
+    const { nickname, subcategory, encrypted_password, encrypted_details, encrypted_metadata, metadata_salt, metadata_iv, salt, iv, plain_details } = await req.json();
 
     // Verify ownership
     const credential = await turso.execute({
@@ -96,6 +96,25 @@ export async function PUT(req, { params }) {
     }
 
     const recordCategory = credential.rows[0].category;
+    if (recordCategory === 'Cash' && plain_details) {
+      const details = typeof plain_details === 'string' ? JSON.parse(plain_details) : plain_details;
+      if (!nickname?.trim() || !['Lent', 'Borrowed'].includes(subcategory) || !String(details.counterparty || '').trim() || !String(details.date || '').trim() || !Number.isFinite(Number(details.amount)) || Number(details.amount) <= 0) {
+        return NextResponse.json({ error: 'A type, nickname, person, positive amount, and date are required.' }, { status: 400 });
+      }
+      await ensureCashTransactionsTable();
+      const paid = await turso.execute({
+        sql: 'SELECT COALESCE(SUM(amount), 0) AS total FROM cash_transactions WHERE credential_id = ?',
+        args: [id]
+      });
+      if (Math.round(Number(details.amount) * 100) < Math.round(Number(paid.rows[0]?.total || 0) * 100)) {
+        return NextResponse.json({ error: 'Principal cannot be less than payments already recorded.' }, { status: 400 });
+      }
+      await turso.execute({
+        sql: 'UPDATE credentials SET nickname = ?, subcategory = ?, plain_details = ? WHERE id = ?',
+        args: [nickname.trim(), subcategory, JSON.stringify({ counterparty: String(details.counterparty).trim(), amount: Number(details.amount), date: details.date }), id]
+      });
+      return NextResponse.json({ success: true, message: 'Cash record updated successfully!' });
+    }
     if (recordCategory === 'Cards') {
       if (!nickname || !encrypted_details || !encrypted_metadata || !metadata_salt || !metadata_iv || !salt || !iv) {
         return NextResponse.json({ error: 'Required card fields are missing.' }, { status: 400 });
@@ -152,6 +171,9 @@ export async function DELETE(req, { params }) {
       sql: 'DELETE FROM credential_shares WHERE credential_id = ?',
       args: [id]
     });
+
+    await ensureCashTransactionsTable();
+    await turso.execute({ sql: 'DELETE FROM cash_transactions WHERE credential_id = ?', args: [id] });
 
     // Delete the credential itself
     await turso.execute({

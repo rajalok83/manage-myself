@@ -17,8 +17,8 @@ export async function GET(req, { params }) {
     
     // Verify if the user owns the credential or if it has been shared with them
     const recordQuery = await turso.execute({
-      sql: `SELECT c.encrypted_password, c.salt, c.iv, c.owner_id,
-           c.encrypted_metadata, c.metadata_salt, c.metadata_iv, s.share_mode
+      sql: `SELECT c.category, c.encrypted_password, c.salt, c.iv, c.owner_id, c.plain_details,
+         c.encrypted_metadata, c.metadata_salt, c.metadata_iv, s.share_mode
             FROM credentials c
             LEFT JOIN credential_shares s ON c.id = s.credential_id AND s.shared_with_user_id = ?
             WHERE c.id = ? AND (c.owner_id = ? OR s.shared_with_user_id = ?)`,
@@ -29,13 +29,22 @@ export async function GET(req, { params }) {
       return NextResponse.json({ error: 'Access denied or item not found.' }, { status: 403 });
     }
 
-    const categoryQuery = await turso.execute({ sql: 'SELECT category FROM credentials WHERE id = ?', args: [id] });
-    if (categoryQuery.rows[0]?.category === 'Cards') {
+    const row = recordQuery.rows[0];
+    if (row.category === 'Cards') {
       return NextResponse.json({ error: 'A PIN is required to reveal card details.' }, { status: 405 });
     }
 
+    if (row.category === 'Cash' && row.plain_details) {
+      if (row.share_mode === 'once') {
+        await turso.execute({
+          sql: 'DELETE FROM credential_shares WHERE credential_id = ? AND shared_with_user_id = ? AND share_mode = ?',
+          args: [id, user.id, 'once']
+        });
+      }
+      return NextResponse.json({ cash: JSON.parse(row.plain_details) });
+    }
+
     // 3. Return the specific object containing crypto keys, not the whole raw array list wrapper
-    const row = recordQuery.rows[0];
     if (row.share_mode === 'once') {
       await turso.execute({
         sql: 'DELETE FROM credential_shares WHERE credential_id = ? AND shared_with_user_id = ? AND share_mode = ?',

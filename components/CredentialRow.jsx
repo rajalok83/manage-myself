@@ -4,21 +4,32 @@ import { useEffect, useRef, useState } from 'react';
 import { encryptData, decryptData } from '@/lib/crypto';
 import { showToast } from '@/lib/toast';
 import { startLoading, stopLoading } from '@/lib/loading';
+import ReactMarkdown from 'react-markdown';
+import CashLedger from './CashLedger';
 
 export default function CredentialRow({ item, isSharedView = false, onRefresh, sharedRecipients = [], onRevokeRecipients }) {
   const rowRef = useRef(null);
   const isCard = item.category === 'Cards';
   const isIdentity = item.category === 'Identity';
+  const isNotes = item.category === 'Notes';
+  const isInsurance = item.category === 'Insurance';
+  const isCash = item.category === 'Cash';
+  const requiresPin = !isNotes && !(isCash && Number(item.requires_pin) === 0);
+  const itemApiPath = isNotes ? `/api/notes/${item.id}` : `/api/credentials/${item.id}`;
+  const infoApiPath = `${itemApiPath}/info`;
   const canEdit = !isSharedView || item.share_mode === 'edit';
   const subcategoryOptions = {
     Websites: ['Banking', 'Social Media', 'Work Tools', 'Shopping', 'Entertainment', 'Misc'],
     Cards: ['Debit', 'Credit'],
     Identity: ['Aadhar', 'PAN', 'VOTER ID'],
-    'Money Matters': ['Bank Account', 'Demat Accounts', 'Insurance', 'Mutual Funds', 'Stocks']
+    'Money Matters': ['Bank Account', 'Demat Accounts', 'Insurance', 'Mutual Funds', 'Stocks'],
+    Insurance: ['Medical Wealth', 'Health', 'Term', 'Auto'],
+    Cash: ['Lent', 'Borrowed']
   }[item.category] || (item.subcategory ? [item.subcategory] : []);
   const [pin, setPin] = useState('');
   const [decryptedPassword, setDecryptedPassword] = useState('');
   const [decryptedMetadata, setDecryptedMetadata] = useState({});
+  const [cashTransactionRows, setCashTransactionRows] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [shareEmail, setShareEmail] = useState('');
@@ -84,7 +95,18 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
     subcategory: item.subcategory || '',
     web_url: item.web_url,
     login_id: item.login_id,
-    description: item.description || ''
+    description: item.description || '',
+    markdown: '',
+    provider: '',
+    policyNumber: '',
+    coverageAmount: '',
+    premiumAmount: '',
+    premiumFrequency: 'Annual',
+    startDate: '',
+    endDate: '',
+    counterparty: '',
+    amount: '',
+    cashDate: ''
   });
 
   const handleEditChange = (field, value) => {
@@ -93,6 +115,32 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
 
   const startEdit = async () => {
     setErrorMessage('');
+    if (isNotes || (isCash && !requiresPin)) {
+      startLoading();
+      try {
+        const response = await fetch(infoApiPath, { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `Unable to load this ${isNotes ? 'note' : 'cash record'}.`);
+        if (isNotes) setDecryptedPassword(data.markdown || '');
+        else {
+          const details = data.cash;
+          setDecryptedPassword(JSON.stringify(details));
+          setEditForm((previous) => ({
+            ...previous,
+            counterparty: details.counterparty || '',
+            amount: String(details.amount || ''),
+            cashDate: details.date || ''
+          }));
+        }
+        setIsEditing(true);
+        setShowMenu(false);
+      } catch (error) {
+        setErrorMessage(error.message);
+      } finally {
+        stopLoading();
+      }
+      return;
+    }
     setEditUnlockPin('');
     setShowEditUnlockPin(false);
     setShowEditUnlock(true);
@@ -106,7 +154,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
     startLoading();
 
     try {
-      const response = await fetch(`/api/credentials/${item.id}/info`, {
+      const response = await fetch(infoApiPath, {
         method: isCard ? 'POST' : 'GET',
         ...(isCard ? {
           headers: { 'Content-Type': 'application/json' },
@@ -121,7 +169,19 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
         const cardDetails = JSON.parse(decryptData(data.card.encrypted_details, editUnlockPin, data.card.salt, data.card.iv));
         setEditCardPin(cardDetails.cardPin || '');
       } else {
-        setDecryptedPassword(decryptData(data.encrypted_password, editUnlockPin, data.salt, data.iv));
+        const secret = decryptData(data.encrypted_password, editUnlockPin, data.salt, data.iv);
+        setDecryptedPassword(secret);
+        if (isInsurance || isCash) {
+          const details = JSON.parse(secret);
+          setEditForm((previous) => ({
+            ...previous,
+            ...(isInsurance ? details : {
+              counterparty: details.counterparty || '',
+              amount: String(details.amount || ''),
+              cashDate: details.date || ''
+            })
+          }));
+        }
       }
       if (data.encrypted_metadata) {
         setEditForm((previous) => ({
@@ -146,7 +206,15 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
     startLoading();
     
     try {
-      const res = await fetch(`/api/credentials/${item.id}/info`, {
+      let transactions = [];
+      if (isCash) {
+        const transactionResponse = await fetch(`/api/credentials/${item.id}/transactions`, { cache: 'no-store' });
+        const transactionData = await transactionResponse.json();
+        if (!transactionResponse.ok) throw new Error(transactionData.error || 'Unable to load cash transactions.');
+        transactions = transactionData.transactions || [];
+      }
+
+      const res = await fetch(infoApiPath, {
         method: isCard ? 'POST' : 'GET',
         ...(isCard ? {
           headers: { 'Content-Type': 'application/json' },
@@ -162,6 +230,14 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
       const data = await res.json();
       const isOneTimeShare = isSharedView && item.share_mode === 'once';
 
+      if (isNotes) {
+        setDecryptedPassword(data.markdown || '');
+        setRevealSeconds(30);
+        setShowPasswordReveal(true);
+        if (isOneTimeShare && onRefresh) await onRefresh();
+        return;
+      }
+
       if (isCard) {
         const cardDetails = JSON.parse(decryptData(data.card.encrypted_details, pin, data.card.salt, data.card.iv));
         setRevealedCard({ ...data.card, ...cardDetails });
@@ -176,10 +252,30 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
         return;
       }
 
+      if (isCash && data.cash) {
+        setCashTransactionRows(transactions);
+        setEditForm((previous) => ({
+          ...previous,
+          counterparty: data.cash.counterparty || '',
+          amount: String(data.cash.amount || ''),
+          cashDate: data.cash.date || ''
+        }));
+        setDecryptedPassword(JSON.stringify(data.cash));
+        setRevealSeconds(30);
+        setShowPasswordReveal(true);
+        if (isOneTimeShare && onRefresh) await onRefresh();
+        return;
+      }
+
       const { encrypted_password, salt, iv } = data;
 
       // 2. Perform local client-side decryption processing 
       const decryptedPassword = decryptData(encrypted_password, pin, salt, iv);
+      if (isInsurance || isCash) {
+        const details = JSON.parse(decryptedPassword);
+        if (isCash) setCashTransactionRows(transactions);
+        else setEditForm((previous) => ({ ...previous, ...details }));
+      }
       if (data.encrypted_metadata) {
         setDecryptedMetadata(JSON.parse(decryptData(data.encrypted_metadata, pin, data.metadata_salt, data.metadata_iv)));
       }
@@ -202,6 +298,35 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
     startLoading();
 
     try {
+      if (isNotes) {
+        const response = await fetch(itemApiPath, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nickname: editForm.nickname, markdown: decryptedPassword, subcategory: '' })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to update this note.');
+        setIsEditing(false);
+        setDecryptedPassword('');
+        if (onRefresh) await onRefresh();
+        return;
+      }
+
+      if (isCash && !requiresPin) {
+        const details = { counterparty: editForm.counterparty, amount: Number(editForm.amount), date: editForm.cashDate };
+        const response = await fetch(itemApiPath, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nickname: editForm.nickname, subcategory: editForm.subcategory, plain_details: details })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to update this cash record.');
+        setIsEditing(false);
+        setDecryptedPassword('');
+        if (onRefresh) await onRefresh();
+        return;
+      }
+
       const encryptionPayload = !isCard ? encryptData(decryptedPassword, pin) : null;
       let payload;
       if (isCard) {
@@ -228,9 +353,23 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
         };
       } else {
         const metadata = encryptData(JSON.stringify({ web_url: editForm.web_url, login_id: editForm.login_id, description: editForm.description }), pin);
-        payload = { ...editForm, encrypted_password: encryptionPayload.encryptedData, salt: encryptionPayload.salt, iv: encryptionPayload.iv, encrypted_metadata: metadata.encryptedData, metadata_salt: metadata.salt, metadata_iv: metadata.iv };
+        const secret = isInsurance
+          ? JSON.stringify({
+              provider: editForm.provider,
+              policyNumber: editForm.policyNumber,
+              coverageAmount: editForm.coverageAmount,
+              premiumAmount: editForm.premiumAmount,
+              premiumFrequency: editForm.premiumFrequency,
+              startDate: editForm.startDate,
+              endDate: editForm.endDate
+            })
+          : isCash
+            ? JSON.stringify({ counterparty: editForm.counterparty, amount: Number(editForm.amount), date: editForm.cashDate })
+            : decryptedPassword;
+        const encryptedSecret = encryptData(secret, pin);
+        payload = { ...editForm, encrypted_password: encryptedSecret.encryptedData, salt: encryptedSecret.salt, iv: encryptedSecret.iv, encrypted_metadata: metadata.encryptedData, metadata_salt: metadata.salt, metadata_iv: metadata.iv };
       }
-      const res = await fetch(`/api/credentials/${item.id}`, {
+      const res = await fetch(itemApiPath, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -266,7 +405,11 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
       const res = await fetch('/api/share', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentialId: item.id, targetEmail: normalizedEmail, shareMode })
+        body: JSON.stringify({
+          ...(isNotes ? { itemType: 'note', noteId: item.id } : { itemType: 'credential', credentialId: item.id }),
+          targetEmail: normalizedEmail,
+          shareMode
+        })
       });
       const data = await res.json();
 
@@ -288,7 +431,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
     setErrorMessage('');
     startLoading();
     try {
-      const res = await fetch(`/api/credentials/${item.id}`, {
+      const res = await fetch(itemApiPath, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -331,10 +474,10 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
               {item.subcategory && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096' }}>
                 <span style={{ fontWeight: '500' }}>Type:</span> {item.subcategory}
               </p>}
-              {!isCard && !isIdentity && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096' }}>
+              {!isCard && !isIdentity && !isInsurance && !isCash && !isNotes && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096' }}>
                 <span style={{ fontWeight: '500' }}>Login:</span> {decryptedMetadata.login_id || 'Protected'}
               </p>}
-              {!isCard && !isIdentity && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096', wordBreak: 'break-all' }}>
+              {!isCard && !isIdentity && !isInsurance && !isCash && !isNotes && <p style={{ margin: 0, fontSize: 'clamp(12px, 2.5vw, 13px)', color: '#718096', wordBreak: 'break-all' }}>
                 <span style={{ fontWeight: '500' }}>URL:</span> Protected until reveal
               </p>}
               {isSharedView && <p style={{ margin: '6px 0 0 0', fontSize: 'clamp(11px, 2.5vw, 12px)', color: '#3182ce', fontWeight: '500' }}>📤 Shared by: {item.shared_by}</p>}
@@ -491,10 +634,10 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
               </label>
             ))}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button type="button" disabled={selectedRecipients.length === 0} onClick={() => { const recipients = selectedRecipients; setSelectedRecipients([]); onRevokeRecipients(item.id, recipients); }} style={smallDangerButtonStyle}>
+              <button type="button" disabled={selectedRecipients.length === 0} onClick={() => { const recipients = selectedRecipients; setSelectedRecipients([]); onRevokeRecipients(item.id, recipients, false, isNotes ? 'note' : 'credential'); }} style={smallDangerButtonStyle}>
                 Remove selected
               </button>
-              <button type="button" onClick={() => { setSelectedRecipients([]); onRevokeRecipients(item.id, [], true); }} style={smallDangerButtonStyle}>
+              <button type="button" onClick={() => { setSelectedRecipients([]); onRevokeRecipients(item.id, [], true, isNotes ? 'note' : 'credential'); }} style={smallDangerButtonStyle}>
                 Remove all access
               </button>
             </div>
@@ -575,7 +718,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
               {item.nickname}
             </h3>
             <form onSubmit={handleReveal} style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1 }}>
+              {requiresPin && <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1 }}>
               <input 
                 type={showRevealPin ? 'text' : 'password'}
                 placeholder="Enter Decrypting PIN" 
@@ -589,7 +732,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
               <button type="button" onClick={() => setShowRevealPin(!showRevealPin)} style={eyeButtonStyle}>
                 {showRevealPin ? '🙈' : '👁️'}
               </button>
-              </div>
+              </div>}
               <button type="submit" style={{ padding: '6px 12px', backgroundColor: '#48bb78', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', whiteSpace: 'nowrap' }}>Reveal</button>
             </form>
             {decryptedPassword && (
@@ -612,6 +755,32 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
                         {showCardPin ? '🙈' : '👁️'}
                       </button>
                     </p>
+                  </>
+                ) : isNotes ? (
+                  <article style={{ color: '#22543d', fontSize: '13px', overflowWrap: 'anywhere' }}>
+                    <ReactMarkdown>{decryptedPassword}</ReactMarkdown>
+                  </article>
+                ) : isInsurance ? (
+                  <>
+                    <p style={revealDetailStyle}>Type: {item.subcategory}</p>
+                    <p style={revealDetailStyle}>Provider: {JSON.parse(decryptedPassword).provider}</p>
+                    <p style={revealDetailStyle}>Policy Number: {JSON.parse(decryptedPassword).policyNumber}</p>
+                    <p style={revealDetailStyle}>Coverage: {JSON.parse(decryptedPassword).coverageAmount}</p>
+                    <p style={revealDetailStyle}>Premium: {JSON.parse(decryptedPassword).premiumAmount} / {JSON.parse(decryptedPassword).premiumFrequency}</p>
+                    <p style={revealDetailStyle}>Period: {JSON.parse(decryptedPassword).startDate}{JSON.parse(decryptedPassword).endDate ? ` to ${JSON.parse(decryptedPassword).endDate}` : ''}</p>
+                  </>
+                ) : isCash ? (
+                  <>
+                    <p style={revealDetailStyle}>{item.subcategory}: {JSON.parse(decryptedPassword).counterparty}</p>
+                    <p style={revealDetailStyle}>Principal: {JSON.parse(decryptedPassword).amount}</p>
+                    <p style={revealDetailStyle}>Date: {JSON.parse(decryptedPassword).date}</p>
+                    <CashLedger
+                      credentialId={item.id}
+                      transactionRows={cashTransactionRows}
+                      pin={pin}
+                      principal={JSON.parse(decryptedPassword).amount}
+                      canEdit={canEdit}
+                    />
                   </>
                 ) : isIdentity ? (
                   <p style={revealDetailStyle}>Identity Number: <code style={revealCodeStyle}>{decryptedPassword}</code></p>
@@ -668,7 +837,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
         <form onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
           <span style={{ fontWeight: '600' }}>Subcategory</span>
-          <select
+          {!isNotes && <select
             value={editForm.subcategory}
             onChange={(e) => handleEditChange('subcategory', e.target.value)}
             required
@@ -678,21 +847,49 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
             {subcategoryOptions.map((subcategory) => (
               <option key={subcategory} value={subcategory}>{subcategory}</option>
             ))}
-          </select>
+          </select>}
         </label>
           <label style={{ fontSize: '12px', color: '#4a5568' }}>
             Nickname:
             <input type="text" value={editForm.nickname} onChange={(e) => handleEditChange('nickname', e.target.value)} required style={editFieldStyle} />
           </label>
-          {!isCard && !isIdentity && <label style={{ fontSize: '12px', color: '#4a5568' }}>
+          {!isCard && !isIdentity && !isInsurance && !isCash && !isNotes && <label style={{ fontSize: '12px', color: '#4a5568' }}>
             Web URL:
             <input type="url" value={editForm.web_url} onChange={(e) => handleEditChange('web_url', e.target.value)} required style={editFieldStyle} />
           </label>}
-          {!isCard && !isIdentity && <label style={{ fontSize: '12px', color: '#4a5568' }}>
+          {!isCard && !isIdentity && !isInsurance && !isCash && !isNotes && <label style={{ fontSize: '12px', color: '#4a5568' }}>
             Login ID:
             <input type="text" value={editForm.login_id} onChange={(e) => handleEditChange('login_id', e.target.value)} required style={editFieldStyle} />
           </label>}
-          {!isCard && <label style={{ fontSize: '12px', color: '#4a5568' }}>
+          {isInsurance && <>
+            {[
+              ['provider', 'Provider'],
+              ['policyNumber', 'Policy Number'],
+              ['coverageAmount', 'Coverage Amount'],
+              ['premiumAmount', 'Premium Amount'],
+              ['premiumFrequency', 'Premium Frequency'],
+              ['startDate', 'Start Date'],
+              ['endDate', 'End Date']
+            ].map(([field, label]) => <label key={field} style={{ fontSize: '12px', color: '#4a5568' }}>
+              {label}:
+              <input type={field.endsWith('Date') ? 'date' : 'text'} value={editForm[field] || ''} onChange={(event) => handleEditChange(field, event.target.value)} required={field !== 'endDate'} style={editFieldStyle} />
+            </label>)}
+          </>}
+          {isCash && <>
+            <label style={{ fontSize: '12px', color: '#4a5568' }}>Person or organization:
+              <input value={editForm.counterparty} onChange={(event) => handleEditChange('counterparty', event.target.value)} required style={editFieldStyle} />
+            </label>
+            <label style={{ fontSize: '12px', color: '#4a5568' }}>Principal amount:
+              <input type="number" min="0.01" step="0.01" value={editForm.amount} onChange={(event) => handleEditChange('amount', event.target.value)} required style={editFieldStyle} />
+            </label>
+            <label style={{ fontSize: '12px', color: '#4a5568' }}>Date:
+              <input type="date" value={editForm.cashDate} onChange={(event) => handleEditChange('cashDate', event.target.value)} required style={editFieldStyle} />
+            </label>
+          </>}
+          {isNotes && <label style={{ fontSize: '12px', color: '#4a5568' }}>Markdown:
+            <textarea rows={14} value={decryptedPassword} onChange={(event) => setDecryptedPassword(event.target.value)} required style={{ ...editFieldStyle, fontFamily: 'monospace' }} />
+          </label>}
+          {!isCard && !isNotes && !isInsurance && !isCash && <label style={{ fontSize: '12px', color: '#4a5568' }}>
             {isIdentity ? 'Identity Number:' : 'Password:'}
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <input type={showEditPassword ? 'text' : 'password'} value={decryptedPassword === 'card' ? '' : decryptedPassword} onChange={(e) => setDecryptedPassword(e.target.value)} required style={{ ...editFieldStyle, paddingRight: '36px' }} />
@@ -715,7 +912,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
               </div>
             </label>
           </>}
-          {!isCard && <label style={{ fontSize: '12px', color: '#4a5568' }}>
+          {!isCard && requiresPin && <label style={{ fontSize: '12px', color: '#4a5568' }}>
             Encrypting PIN:
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <input type={showEditPin ? 'text' : 'password'} value={pin} onChange={(e) => setPin(e.target.value)} required minLength={4} style={{ ...editFieldStyle, paddingRight: '36px' }} />
