@@ -6,6 +6,7 @@ import { showToast } from '@/lib/toast';
 import { startLoading, stopLoading } from '@/lib/loading';
 import ReactMarkdown from 'react-markdown';
 import CashLedger from './CashLedger';
+import { getCategoryPalette } from '@/lib/category-palette';
 
 export default function CredentialRow({ item, categories = {}, isSharedView = false, onRefresh, sharedRecipients = [], onRevokeRecipients }) {
   const rowRef = useRef(null);
@@ -18,6 +19,14 @@ export default function CredentialRow({ item, categories = {}, isSharedView = fa
   const itemApiPath = isNotes ? `/api/notes/${item.id}` : `/api/credentials/${item.id}`;
   const infoApiPath = `${itemApiPath}/info`;
   const canEdit = !isSharedView || item.share_mode === 'edit';
+  const palette = getCategoryPalette(item.category, categories);
+  const listItemStyle = {
+    padding: '14px',
+    border: `1px solid ${palette.border}`,
+    borderRadius: '12px',
+    background: `linear-gradient(135deg, ${palette.background} 0%, #fff 100%)`,
+    marginBottom: '12px'
+  };
   const subcategoryOptions = categories[item.category] || (item.subcategory ? [item.subcategory] : []);
   const [pin, setPin] = useState('');
   const [decryptedPassword, setDecryptedPassword] = useState('');
@@ -455,7 +464,7 @@ export default function CredentialRow({ item, categories = {}, isSharedView = fa
           if (event.target.closest('button, a, input, textarea, select, form')) return;
           setShowPasswordReveal(true);
         }}
-        style={{ padding: '14px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#fff', marginBottom: '12px', cursor: 'pointer' }}
+        style={{ ...listItemStyle, cursor: 'pointer' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
           {/* Card Content */}
@@ -704,7 +713,7 @@ export default function CredentialRow({ item, categories = {}, isSharedView = fa
   // Password Reveal State
   if (showPasswordReveal && !isEditing) {
     return (
-      <div ref={rowRef} style={{ padding: '14px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#fff', marginBottom: '12px' }}>
+      <div ref={rowRef} style={listItemStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: 'clamp(15px, 3vw, 16px)', fontWeight: '600', color: '#2d3748' }}>
@@ -823,7 +832,7 @@ export default function CredentialRow({ item, categories = {}, isSharedView = fa
   // Editing State
   if (isEditing) {
     return (
-      <div ref={rowRef} style={{ padding: '14px', border: '2px solid #3182ce', borderRadius: '8px', backgroundColor: '#ebf8ff', marginBottom: '12px' }}>
+      <div ref={rowRef} style={{ ...listItemStyle, border: `2px solid ${palette.accent}` }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: 'clamp(15px, 3vw, 16px)', fontWeight: '600', color: '#2d3748' }}>
           Edit: {item.nickname}
         </h3>

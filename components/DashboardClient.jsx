@@ -7,18 +7,11 @@ import CategoryCard from './CategoryCard';
 import CategoryAddForm from './CategoryAddForm';
 import ToastViewport from './ToastViewport';
 import LoadingViewport from './LoadingViewport';
+import LoadingIndicator from './LoadingIndicator';
 import { startLoading, stopLoading } from '@/lib/loading';
 import { updateIfChanged } from '@/lib/data-equality';
+import { categoryPalette } from '@/lib/category-palette';
 import { useVaultData } from './VaultDataProvider';
-
-const cardPalette = [
-  { background: '#f4f1ea', accent: '#8b6f47', border: '#e7dcc6' },
-  { background: '#edf5ef', accent: '#3d6d4c', border: '#d6e8d9' },
-  { background: '#eef4fb', accent: '#355f8a', border: '#d8e7f7' },
-  { background: '#f7f0f7', accent: '#7a4d73', border: '#ead9ec' },
-  { background: '#fff5ee', accent: '#b96b42', border: '#f2d9c9' },
-  { background: '#f3f7f8', accent: '#496a72', border: '#d9e6e8' },
-];
 
 export default function DashboardClient({ user, categories, isInviteAdmin = false, initialData = {} }) {
   const { getDashboardSnapshot, setDashboardSnapshot } = useVaultData();
@@ -134,14 +127,19 @@ export default function DashboardClient({ user, categories, isInviteAdmin = fals
         {isLoading && <p style={{ color: '#718096' }}>Loading your vault...</p>}
         {activeView === 'vault' && (
           <section>
-            {!hasLoadedDashboard && <p role="status" style={{ color: '#718096', margin: '0 0 12px' }}>Loading item counts in the background…</p>}
+            {!hasLoadedDashboard && (
+              <p role="status" style={loadingMessageStyle}>
+                <LoadingIndicator size={20} />
+                Loading item counts in the background…
+              </p>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '14px' }}>
               {Object.keys(categories).map((cat, index) => (
                 <CategoryCard 
                   key={cat} 
                   name={cat}
                   count={hasLoadedDashboard ? categoryCounts[cat] || 0 : '…'}
-                  palette={cardPalette[index % cardPalette.length]}
+                  palette={categoryPalette[index % categoryPalette.length]}
                   onAddClick={(category) => setModalCategory(category)}
                   onRefresh={loadDashboard}
                 />
@@ -214,3 +212,5 @@ export default function DashboardClient({ user, categories, isInviteAdmin = fals
     </>
   );
 }
+
+const loadingMessageStyle = { display: 'flex', alignItems: 'center', gap: '8px', color: '#718096', margin: '0 0 12px' };
