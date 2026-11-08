@@ -9,7 +9,6 @@ import ToastViewport from './ToastViewport';
 import LoadingViewport from './LoadingViewport';
 import { startLoading, stopLoading } from '@/lib/loading';
 import { updateIfChanged } from '@/lib/data-equality';
-import { categories as defaultCategories } from '@/lib/categories';
 import { useVaultData } from './VaultDataProvider';
 
 const cardPalette = [
@@ -21,7 +20,7 @@ const cardPalette = [
   { background: '#f3f7f8', accent: '#496a72', border: '#d9e6e8' },
 ];
 
-export default function DashboardClient({ user, categories = defaultCategories, isInviteAdmin = false, initialData = {} }) {
+export default function DashboardClient({ user, categories, isInviteAdmin = false, initialData = {} }) {
   const { getDashboardSnapshot, setDashboardSnapshot } = useVaultData();
   const [activeView, setActiveView] = useState('vault');
   const [modalCategory, setModalCategory] = useState(null);
@@ -155,6 +154,7 @@ export default function DashboardClient({ user, categories = defaultCategories, 
           <SharedManagement
             initialSharedByMe={sharedByMeRows}
             initialSharedWithMe={sharedWithMeRows}
+            categories={categories}
             activeTab={activeView}
             onRefresh={loadDashboard}
             isInitialLoading={!hasLoadedDashboard && !error}

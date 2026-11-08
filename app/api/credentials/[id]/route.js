@@ -1,4 +1,5 @@
 import { turso, getSessionUser, ensureCredentialMetadataColumns, ensureCredentialShareColumns, ensureCashTransactionsTable } from '@/lib/turso';
+import { isValidCategorySelection } from '@/lib/category-config';
 import { NextResponse } from 'next/server';
 
 // 1. GET: Fetch all active credential items belonging to the logged-in profile
@@ -96,9 +97,12 @@ export async function PUT(req, { params }) {
     }
 
     const recordCategory = credential.rows[0].category;
+    if (!(await isValidCategorySelection(recordCategory, subcategory))) {
+      return NextResponse.json({ error: 'Select a valid category subcategory.' }, { status: 400 });
+    }
     if (recordCategory === 'Cash' && plain_details) {
       const details = typeof plain_details === 'string' ? JSON.parse(plain_details) : plain_details;
-      if (!nickname?.trim() || !['Lent', 'Borrowed'].includes(subcategory) || !String(details.counterparty || '').trim() || !String(details.date || '').trim() || !Number.isFinite(Number(details.amount)) || Number(details.amount) <= 0) {
+      if (!nickname?.trim() || !String(details.counterparty || '').trim() || !String(details.date || '').trim() || !Number.isFinite(Number(details.amount)) || Number(details.amount) <= 0) {
         return NextResponse.json({ error: 'A type, nickname, person, positive amount, and date are required.' }, { status: 400 });
       }
       await ensureCashTransactionsTable();

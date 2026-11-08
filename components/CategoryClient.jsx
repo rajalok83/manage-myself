@@ -9,12 +9,12 @@ import ToastViewport from './ToastViewport';
 import LoadingViewport from './LoadingViewport';
 import { startLoading, stopLoading } from '@/lib/loading';
 import { updateIfChanged } from '@/lib/data-equality';
-import { categories } from '@/lib/categories';
 import { useVaultData } from './VaultDataProvider';
 
 export default function CategoryClient({
   user,
   categoryName,
+  categories,
   isInviteAdmin = false,
   initialCategoryData = {},
   initialShareData = { sharedByMe: [], sharedWithMe: [] }
@@ -127,11 +127,12 @@ export default function CategoryClient({
         ) : activeView === 'vault' && credentials.length === 0 ? (
           <p style={{ color: '#718096', fontStyle: 'italic' }}>No records saved in {categoryName} section yet.</p>
         ) : activeView === 'vault' ? credentials.map((row) => (
-          <CredentialRow key={row.id} item={row} isSharedView={false} onRefresh={loadCategory} />
+          <CredentialRow key={row.id} item={row} categories={categories} isSharedView={false} onRefresh={loadCategory} />
         )) : (
           <SharedManagement
             initialSharedByMe={sharedByMeRows}
             initialSharedWithMe={sharedWithMeRows}
+            categories={categories}
             activeTab={activeView}
             onRefresh={loadCategory}
             isInitialLoading={!hasLoadedCategory && !error}

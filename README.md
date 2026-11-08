@@ -80,7 +80,7 @@ Every item also has a required nickname. A nickname must be unique within the ow
 	node init-db.js
 	```
 
-	For a Turso database, execute [`schema.sql`](schema.sql) against the database before first use. The application also performs small compatibility migrations for columns added after the initial schema.
+	For a Turso database, execute [`schema.sql`](schema.sql) against the database before first use and when applying schema updates. It creates and seeds the category/subcategory tables using `INSERT OR IGNORE`, which does not overwrite existing rows. The application also performs small compatibility migrations for columns added after the initial schema.
 
 4. Add `http://localhost:3000/api/auth/callback` to the authorized redirect URIs in Google Cloud Console.
 

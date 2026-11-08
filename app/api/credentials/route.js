@@ -1,4 +1,5 @@
 import { turso, getSessionUser, ensureCredentialMetadataColumns, ensureNotesTables } from '@/lib/turso';
+import { isValidCategorySelection } from '@/lib/category-config';
 import { NextResponse } from 'next/server';
 
 export async function POST(req) {
@@ -9,6 +10,9 @@ export async function POST(req) {
     await ensureCredentialMetadataColumns();
     await ensureNotesTables();
     const { category, subcategory, nickname, encrypted_password, encrypted_details, encrypted_metadata, metadata_salt, metadata_iv, salt, iv, plain_details } = await req.json();
+    if (!(await isValidCategorySelection(category, subcategory))) {
+      return NextResponse.json({ error: 'Select a valid category and subcategory.' }, { status: 400 });
+    }
 
     try {
       await turso.execute('ALTER TABLE credentials ADD COLUMN subcategory TEXT');
@@ -50,7 +54,7 @@ export async function POST(req) {
 
     if (category === 'Cash') {
       const details = plain_details || {};
-      if (!nickname?.trim() || !['Lent', 'Borrowed'].includes(subcategory) || !String(details.counterparty || '').trim() || !String(details.date || '').trim() || !Number.isFinite(Number(details.amount)) || Number(details.amount) <= 0) {
+      if (!nickname?.trim() || !String(details.counterparty || '').trim() || !String(details.date || '').trim() || !Number.isFinite(Number(details.amount)) || Number(details.amount) <= 0) {
         return NextResponse.json({ error: 'A type, nickname, person, positive amount, and date are required.' }, { status: 400 });
       }
       const [credentialDuplicate, noteDuplicate] = await Promise.all([
@@ -104,4 +108,3 @@ export async function POST(req) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-

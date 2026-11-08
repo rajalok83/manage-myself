@@ -2,13 +2,14 @@ import { getSessionUser } from '../../lib/turso';
 import { redirect } from 'next/navigation';
 import DashboardClient from '../../components/DashboardClient';
 import { AUTH_CONFIG } from '@/lib/config';
-import { categories } from '@/lib/categories';
+import { getCategoryConfiguration } from '@/lib/category-config';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
   const user = await getSessionUser();
   if (!user) redirect('/');
+  const categories = await getCategoryConfiguration();
 
   return (
     <DashboardClient 

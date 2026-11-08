@@ -7,7 +7,7 @@ import { startLoading, stopLoading } from '@/lib/loading';
 import ReactMarkdown from 'react-markdown';
 import CashLedger from './CashLedger';
 
-export default function CredentialRow({ item, isSharedView = false, onRefresh, sharedRecipients = [], onRevokeRecipients }) {
+export default function CredentialRow({ item, categories = {}, isSharedView = false, onRefresh, sharedRecipients = [], onRevokeRecipients }) {
   const rowRef = useRef(null);
   const isCard = item.category === 'Cards';
   const isIdentity = item.category === 'Identity';
@@ -18,14 +18,7 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
   const itemApiPath = isNotes ? `/api/notes/${item.id}` : `/api/credentials/${item.id}`;
   const infoApiPath = `${itemApiPath}/info`;
   const canEdit = !isSharedView || item.share_mode === 'edit';
-  const subcategoryOptions = {
-    Websites: ['Banking', 'Social Media', 'Work Tools', 'Shopping', 'Entertainment', 'Misc'],
-    Cards: ['Debit', 'Credit'],
-    Identity: ['Aadhar', 'PAN', 'VOTER ID'],
-    'Money Matters': ['Bank Account', 'Demat Accounts', 'Insurance', 'Mutual Funds', 'Stocks'],
-    Insurance: ['Medical Wealth', 'Health', 'Term', 'Auto'],
-    Cash: ['Lent', 'Borrowed']
-  }[item.category] || (item.subcategory ? [item.subcategory] : []);
+  const subcategoryOptions = categories[item.category] || (item.subcategory ? [item.subcategory] : []);
   const [pin, setPin] = useState('');
   const [decryptedPassword, setDecryptedPassword] = useState('');
   const [decryptedMetadata, setDecryptedMetadata] = useState({});

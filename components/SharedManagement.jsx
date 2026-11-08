@@ -7,6 +7,7 @@ import { showToast } from '@/lib/toast';
 export default function SharedManagement({
   initialSharedByMe,
   initialSharedWithMe,
+  categories,
   activeTab: parentActiveTab,
   onRefresh,
   isInitialLoading = false
@@ -78,7 +79,7 @@ export default function SharedManagement({
               <p style={{ color: '#718096', fontStyle: 'italic', margin: 0 }}>No vault entries have been shared with you yet.</p>
             ) : sharedWithMe.length > 0 ? (
               sharedWithMe.map((item) => (
-                <CredentialRow key={`shared-wm-${item.item_type || 'credential'}-${item.id}`} item={item} isSharedView={true} onRefresh={onRefresh} />
+                <CredentialRow key={`shared-wm-${item.item_type || 'credential'}-${item.id}`} item={item} categories={categories} isSharedView={true} onRefresh={onRefresh} />
               ))
             ) : null}
           </div>
@@ -95,6 +96,7 @@ export default function SharedManagement({
                   >
                     <CredentialRow
                       item={item}
+                      categories={categories}
                       isSharedView={false}
                       onRefresh={onRefresh}
                       sharedRecipients={item.shared_with}
