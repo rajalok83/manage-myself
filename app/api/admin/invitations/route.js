@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { INVITE_ADMIN_EMAIL } from '@/lib/config';
+import { AUTH_CONFIG } from '@/lib/config';
 import { ensureInvitationsTable, getSessionUser, normalizeEmail, turso } from '@/lib/turso';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 async function requireAdmin() {
   const user = await getSessionUser();
   if (!user) return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  if (normalizeEmail(user.email) !== normalizeEmail(INVITE_ADMIN_EMAIL)) {
+  if (normalizeEmail(user.email) !== normalizeEmail(AUTH_CONFIG.INVITE_ADMIN_EMAIL)) {
     return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
   return { user };
@@ -39,7 +39,7 @@ export async function POST(request) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
     }
-    if (email === normalizeEmail(INVITE_ADMIN_EMAIL)) {
+    if (email === normalizeEmail(AUTH_CONFIG.INVITE_ADMIN_EMAIL)) {
       return NextResponse.json({ error: 'The administrator already has permanent access.' }, { status: 400 });
     }
 
@@ -71,7 +71,7 @@ export async function DELETE(request) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
     }
-    if (email === normalizeEmail(INVITE_ADMIN_EMAIL)) {
+    if (email === normalizeEmail(AUTH_CONFIG.INVITE_ADMIN_EMAIL)) {
       return NextResponse.json({ error: 'The administrator cannot be removed.' }, { status: 400 });
     }
 

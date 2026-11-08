@@ -1,7 +1,7 @@
 import { turso, isEmailAllowed } from '@/lib/turso';
 import { NextResponse } from 'next/server';
 import { getGoogleRedirectUri, getPublicOrigin } from '@/lib/google-auth';
-import { AUTH_CONFIG, IS_PRODUCTION } from '@/lib/config';
+import { AUTH_CONFIG } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -128,7 +128,7 @@ export async function GET(request) {
     
     response.cookies.set('session_token', sessionToken, {
       httpOnly: true,
-      secure: IS_PRODUCTION,
+      secure: AUTH_CONFIG.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: sessionDurationInSeconds,
       path: '/',

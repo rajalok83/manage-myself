@@ -5,5 +5,4 @@ schema.sql
 .claude/**
 .next/**
 node_modules/**
-lib/config.js
 public/**

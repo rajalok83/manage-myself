@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getGoogleRedirectUri } from '@/lib/google-auth';
-import { AUTH_CONFIG, IS_PRODUCTION } from '@/lib/config';
+import { AUTH_CONFIG } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -41,7 +41,7 @@ export async function GET(request) {
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 300,
-    secure: IS_PRODUCTION
+    secure: AUTH_CONFIG.NODE_ENV === 'production'
   });
 
   return response;

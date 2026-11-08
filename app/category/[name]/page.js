@@ -1,7 +1,7 @@
 import { getSessionUser } from '@/lib/turso';
 import { redirect } from 'next/navigation';
 import CategoryClient from '@/components/CategoryClient';
-import { INVITE_ADMIN_EMAIL } from '@/lib/config';
+import { AUTH_CONFIG } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +15,7 @@ export default async function CategoryPage({ params }) {
     <CategoryClient
       key={categoryName}
       user={{ ...user }}
-      isInviteAdmin={String(user.email || '').trim().toLowerCase() === INVITE_ADMIN_EMAIL}
+      isInviteAdmin={String(user.email || '').trim().toLowerCase() === String(AUTH_CONFIG.INVITE_ADMIN_EMAIL || '').trim().toLowerCase()}
       categoryName={categoryName}
     />
   );
