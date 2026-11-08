@@ -1,6 +1,8 @@
 import { getSessionUser } from '../../lib/turso';
 import { redirect } from 'next/navigation';
 import DashboardClient from '../../components/DashboardClient';
+import { INVITE_ADMIN_EMAIL } from '@/lib/config';
+import { categories } from '@/lib/categories';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,21 +10,10 @@ export default async function DashboardPage() {
   const user = await getSessionUser();
   if (!user) redirect('/');
 
-  const categories = {
-    "Websites": ['Banking', 'Social Media', 'Work Tools', 'Shopping', 'Entertainment', 'Misc'],
-    "Cards": ["Debit", "Credit"],
-    "Identity": ["Aadhar", "PAN", "VOTER ID"],
-    "Money Matters": ["Bank Account", "Demat Accounts", "Insurance", "Mutual Funds", "Stocks"],
-    "Notes": [],
-    "Insurance": ["Medical Wealth", "Health", "Term", "Auto"],
-    "Cash": ["Lent", "Borrowed"]
-
-  }
-  // const categories = ;
-
   return (
     <DashboardClient 
       user={{ ...user }}
+      isInviteAdmin={String(user.email || '').trim().toLowerCase() === INVITE_ADMIN_EMAIL}
       categories={categories}
     />
   );

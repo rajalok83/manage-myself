@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { startLoading, stopLoading } from '@/lib/loading';
 
-export default function NavigationBar({ user, activeView = 'vault', onViewChange, sharedWithMeCount = 0, sharedByMeCount = 0 }) {
+export default function NavigationBar({ user, isInviteAdmin = false, activeView = 'vault', onViewChange, sharedWithMeCount = 0, sharedByMeCount = 0 }) {
   const navRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
   const [profileMode, setProfileMode] = useState(null);
@@ -258,6 +258,27 @@ export default function NavigationBar({ user, activeView = 'vault', onViewChange
                 <span aria-hidden="true">📤</span>
                 <span>Shared By Me ({sharedByMeTotal})</span>
               </button>
+
+              {isInviteAdmin && (
+                <Link
+                  href="/admin/invitations"
+                  onClick={() => setIsOpen(false)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    boxSizing: 'border-box',
+                    padding: '12px 16px',
+                    textDecoration: 'none',
+                    color: '#1a202c',
+                    fontSize: '14px'
+                  }}
+                >
+                  <span aria-hidden="true">✉️</span>
+                  <span>Manage Invitations</span>
+                </Link>
+              )}
 
               <div style={{ borderTop: '1px solid #edf2f7', margin: '8px 0' }} />
 

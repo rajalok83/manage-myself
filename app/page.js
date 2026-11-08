@@ -3,16 +3,22 @@ import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
-export default async function LandingPage() {
+export default async function LandingPage({ searchParams }) {
   if (await getSessionUser()) redirect('/dashboard');
+  const inviteRequired = searchParams?.error === 'invite_required';
 
   return (
     <main style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f7fafc', fontFamily: 'sans-serif', padding: '20px' }}>
       <div style={{ maxWidth: '450px', width: '100%', padding: '40px', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', textAlign: 'center' }}>
         <h1 style={{ fontSize: '28px', color: '#2d3748', marginBottom: '10px', marginTop: 0 }}>Manage Myself</h1>
         <p style={{ color: '#718096', fontSize: '15px', marginBottom: '30px', lineHeight: '1.5' }}>
-          Secure runtime encrypted credential data storage spaces. Zero password persistence inside plaintext data frames.
+          A private vault for invited users only. Sign in with an enrolled Google email address.
         </p>
+        {inviteRequired && (
+          <p role="alert" style={{ color: '#c53030', fontSize: '14px', marginBottom: '20px' }}>
+            This email address has not been invited. Ask the site administrator to enroll it.
+          </p>
+        )}
         
         <a 
           href="/api/auth/signin"

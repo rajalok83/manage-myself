@@ -835,9 +835,9 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
           Edit: {item.nickname}
         </h3>
         <form onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
+          {!isNotes && <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4a5568' }}>
           <span style={{ fontWeight: '600' }}>Subcategory</span>
-          {!isNotes && <select
+          <select
             value={editForm.subcategory}
             onChange={(e) => handleEditChange('subcategory', e.target.value)}
             required
@@ -847,8 +847,8 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
             {subcategoryOptions.map((subcategory) => (
               <option key={subcategory} value={subcategory}>{subcategory}</option>
             ))}
-          </select>}
-        </label>
+          </select>
+        </label>}
           <label style={{ fontSize: '12px', color: '#4a5568' }}>
             Nickname:
             <input type="text" value={editForm.nickname} onChange={(e) => handleEditChange('nickname', e.target.value)} required style={editFieldStyle} />
@@ -919,10 +919,10 @@ export default function CredentialRow({ item, isSharedView = false, onRefresh, s
               <button type="button" onClick={() => setShowEditPin(!showEditPin)} style={eyeButtonStyle}>{showEditPin ? '🙈' : '👁️'}</button>
             </div>
           </label>}
-          <label style={{ fontSize: '12px', color: '#4a5568' }}>
+          {!isNotes && <label style={{ fontSize: '12px', color: '#4a5568' }}>
             Description:
             <textarea value={editForm.description} onChange={(e) => handleEditChange('description', e.target.value)} style={editFieldStyle} />
-          </label>
+          </label>}
           <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
             <button type="submit" style={{ padding: '8px 14px', backgroundColor: '#38a169', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>Save</button>
             <button type="button" onClick={() => { setIsEditing(false); setDecryptedPassword(''); setPin(''); }} style={{ padding: '8px 14px', backgroundColor: '#e2e8f0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>Cancel</button>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getGoogleRedirectUri } from '@/lib/google-auth';
+import { AUTH_CONFIG, IS_PRODUCTION } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -8,7 +9,7 @@ export const revalidate = 0;
 export async function GET(request) {
   console.log("✈️ PHASE 1: STARTING AUTHENTICATION DISPATCH");
 
-  const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  const clientId = String(AUTH_CONFIG.GOOGLE_CLIENT_ID || '').trim();
   const redirectUri = getGoogleRedirectUri(request);
 
   if (!clientId || !redirectUri) {
@@ -44,7 +45,7 @@ export async function GET(request) {
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 300, // 5 minutes execution window
-    secure: process.env.NODE_ENV === 'production'
+    secure: IS_PRODUCTION
   });
 
   return response;

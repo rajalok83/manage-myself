@@ -8,6 +8,9 @@ import CategoryAddForm from './CategoryAddForm';
 import ToastViewport from './ToastViewport';
 import LoadingViewport from './LoadingViewport';
 import { startLoading, stopLoading } from '@/lib/loading';
+import { updateIfChanged } from '@/lib/data-equality';
+import { categories as defaultCategories } from '@/lib/categories';
+import { useVaultData } from './VaultDataProvider';
 
 const cardPalette = [
   { background: '#f4f1ea', accent: '#8b6f47', border: '#e7dcc6' },
@@ -18,19 +21,22 @@ const cardPalette = [
   { background: '#f3f7f8', accent: '#496a72', border: '#d9e6e8' },
 ];
 
-export default function DashboardClient({ user, categories }) {
+export default function DashboardClient({ user, categories = defaultCategories, isInviteAdmin = false, initialData = {} }) {
+  const { getDashboardSnapshot, setDashboardSnapshot } = useVaultData();
   const [activeView, setActiveView] = useState('vault');
   const [modalCategory, setModalCategory] = useState(null);
-  const [allCredentials, setAllCredentials] = useState([]);
-  const [sharedByMeRows, setSharedByMeRows] = useState([]);
-  const [sharedWithMeRows, setSharedWithMeRows] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [allCredentials, setAllCredentials] = useState(initialData.credentials || []);
+  const [sharedByMeRows, setSharedByMeRows] = useState(initialData.sharedByMe || []);
+  const [sharedWithMeRows, setSharedWithMeRows] = useState(initialData.sharedWithMe || []);
+  const [hasLoadedDashboard, setHasLoadedDashboard] = useState(Boolean(initialData.credentials));
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const loadDashboard = async () => {
-    startLoading();
-    setIsLoading(true);
-    setError('');
+  const loadDashboard = useCallback(async ({ background = false } = {}) => {
+    if (!background) {
+      startLoading();
+      setIsLoading(true);
+    }
 
     try {
       const response = await fetch('/api/dashboard', { cache: 'no-store' });
@@ -40,26 +46,62 @@ export default function DashboardClient({ user, categories }) {
         return;
       }
       if (!response.ok) throw new Error(data.error || 'Unable to load dashboard.');
-      setAllCredentials(data.credentials || []);
-      setSharedByMeRows(data.sharedByMe || []);
-      setSharedWithMeRows(data.sharedWithMe || []);
+      setDashboardSnapshot(user.id, data);
+      updateIfChanged(setAllCredentials, data.credentials || []);
+      updateIfChanged(setSharedByMeRows, data.sharedByMe || []);
+      updateIfChanged(setSharedWithMeRows, data.sharedWithMe || []);
+      setHasLoadedDashboard(true);
+      setError('');
     } catch (loadError) {
-      setError(loadError.message);
+      if (background) {
+        console.error('Background dashboard refresh failed:', loadError);
+        setError('Unable to refresh vault data. Your current view is unchanged; retrying in the background.');
+      } else {
+        setError(loadError.message);
+      }
     } finally {
-      setIsLoading(false);
-      stopLoading();
+      if (!background) {
+        setIsLoading(false);
+        stopLoading();
+      }
     }
-  };
+  }, [setDashboardSnapshot, user.id]);
 
   useEffect(() => {
-    loadDashboard();
-  }, []);
+    let active = true;
+    let requestPending = false;
 
-  const handleSharesLoaded = useCallback(({ sharedByMe, sharedWithMe }) => {
-    setSharedByMeRows(sharedByMe);
-    setSharedWithMeRows(sharedWithMe);
-  }, []);
-  
+    const refreshInBackground = async () => {
+      if (!active || requestPending || document.visibilityState === 'hidden') return;
+      requestPending = true;
+      try {
+        await loadDashboard({ background: true });
+      } finally {
+        requestPending = false;
+      }
+    };
+
+    const cachedData = getDashboardSnapshot(user.id);
+    if (cachedData) {
+      updateIfChanged(setAllCredentials, cachedData.credentials);
+      updateIfChanged(setSharedByMeRows, cachedData.sharedByMe);
+      updateIfChanged(setSharedWithMeRows, cachedData.sharedWithMe);
+      setHasLoadedDashboard(true);
+    }
+
+    const intervalId = window.setInterval(refreshInBackground, 30_000);
+    window.addEventListener('focus', refreshInBackground);
+    document.addEventListener('visibilitychange', refreshInBackground);
+    refreshInBackground();
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshInBackground);
+      document.removeEventListener('visibilitychange', refreshInBackground);
+    };
+  }, [getDashboardSnapshot, loadDashboard, user.id]);
+
   const categoryCounts = useMemo(() => {
     const counts = {};
     Object.keys(categories).forEach((cat) => {
@@ -81,6 +123,7 @@ export default function DashboardClient({ user, categories }) {
       <LoadingViewport />
       <NavigationBar 
         user={user} 
+        isInviteAdmin={isInviteAdmin}
         activeView={activeView} 
         onViewChange={setActiveView}
         sharedWithMeCount={sharedWithMeRows.length}
@@ -92,12 +135,13 @@ export default function DashboardClient({ user, categories }) {
         {isLoading && <p style={{ color: '#718096' }}>Loading your vault...</p>}
         {activeView === 'vault' && (
           <section>
+            {!hasLoadedDashboard && <p role="status" style={{ color: '#718096', margin: '0 0 12px' }}>Loading item counts in the background…</p>}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '14px' }}>
               {Object.keys(categories).map((cat, index) => (
                 <CategoryCard 
                   key={cat} 
                   name={cat}
-                  count={categoryCounts[cat] || 0}
+                  count={hasLoadedDashboard ? categoryCounts[cat] || 0 : '…'}
                   palette={cardPalette[index % cardPalette.length]}
                   onAddClick={(category) => setModalCategory(category)}
                   onRefresh={loadDashboard}
@@ -113,7 +157,7 @@ export default function DashboardClient({ user, categories }) {
             initialSharedWithMe={sharedWithMeRows}
             activeTab={activeView}
             onRefresh={loadDashboard}
-            onSharesLoaded={handleSharesLoaded}
+            isInitialLoading={!hasLoadedDashboard && !error}
           />
         )}
       </main>

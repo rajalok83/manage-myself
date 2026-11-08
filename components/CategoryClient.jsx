@@ -8,61 +8,102 @@ import CategoryAddForm from './CategoryAddForm';
 import ToastViewport from './ToastViewport';
 import LoadingViewport from './LoadingViewport';
 import { startLoading, stopLoading } from '@/lib/loading';
+import { updateIfChanged } from '@/lib/data-equality';
+import { categories } from '@/lib/categories';
+import { useVaultData } from './VaultDataProvider';
 
-export default function CategoryClient({ user, categoryName }) {
-  const [credentials, setCredentials] = useState([]);
-  const [sharedByMeCount, setSharedByMeCount] = useState(0);
-  const [sharedWithMeCount, setSharedWithMeCount] = useState(0);
-  const [sharedByMeRows, setSharedByMeRows] = useState([]);
-  const [sharedWithMeRows, setSharedWithMeRows] = useState([]);
+export default function CategoryClient({
+  user,
+  categoryName,
+  isInviteAdmin = false,
+  initialCategoryData = {},
+  initialShareData = { sharedByMe: [], sharedWithMe: [] }
+}) {
+  const { getCategorySnapshot, setCategorySnapshot } = useVaultData();
+  const [credentials, setCredentials] = useState(initialCategoryData.credentials || []);
+  const [sharedByMeCount, setSharedByMeCount] = useState(initialCategoryData.sharedByMeCount || 0);
+  const [sharedWithMeCount, setSharedWithMeCount] = useState(initialShareData.sharedWithMe.length);
+  const [sharedByMeRows, setSharedByMeRows] = useState(initialShareData.sharedByMe);
+  const [sharedWithMeRows, setSharedWithMeRows] = useState(initialShareData.sharedWithMe);
+  const [hasLoadedCategory, setHasLoadedCategory] = useState(Boolean(initialCategoryData.credentials));
   const [activeView, setActiveView] = useState('vault');
   const [error, setError] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const subCategories = {
-    Websites: ['Banking', 'Social Media', 'Work Tools', 'Shopping', 'Entertainment', 'Misc'],
-    Cards: ['Debit', 'Credit'],
-    Identity: ['Aadhar', 'PAN', 'VOTER ID'],
-    'Money Matters': ['Bank Account', 'Demat Accounts', 'Insurance', 'Mutual Funds', 'Stocks'],
-    Notes: [],
-    Insurance: ['Medical Wealth', 'Health', 'Term', 'Auto'],
-    Cash: ['Lent', 'Borrowed']
-  }[categoryName] || [];
+  const subCategories = categories[categoryName] || [];
 
-  const loadCategory = useCallback(async () => {
-    startLoading();
+  const loadCategory = useCallback(async ({ background = false } = {}) => {
+    if (!background) startLoading();
     try {
-    const [categoryResponse, shareResponse] = await Promise.all([
-      fetch(`/api/categories/${encodeURIComponent(categoryName)}`, { cache: 'no-store' }),
-      fetch('/api/share', { cache: 'no-store' })
-    ]);
-    const data = await categoryResponse.json();
-    const shareData = await shareResponse.json();
-    if (!categoryResponse.ok) throw new Error(data.error || 'Unable to load category.');
-    if (!shareResponse.ok) throw new Error(shareData.error || 'Unable to load shared credentials.');
-    setCredentials(data.credentials || []);
-    setSharedByMeCount(data.sharedByMeCount || 0);
-    setSharedByMeRows(shareData.sharedByMe || []);
-    setSharedWithMeRows(shareData.sharedWithMe || []);
-    setSharedWithMeCount((shareData.sharedWithMe || []).length);
+      const [categoryResponse, shareResponse] = await Promise.all([
+        fetch(`/api/categories/${encodeURIComponent(categoryName)}`, { cache: 'no-store' }),
+        fetch('/api/share', { cache: 'no-store' })
+      ]);
+      const data = await categoryResponse.json();
+      const shareData = await shareResponse.json();
+      if (!categoryResponse.ok) throw new Error(data.error || 'Unable to load category.');
+      if (!shareResponse.ok) throw new Error(shareData.error || 'Unable to load shared credentials.');
+      setCategorySnapshot(user.id, categoryName, data, shareData);
+      updateIfChanged(setCredentials, data.credentials || []);
+      updateIfChanged(setSharedByMeRows, shareData.sharedByMe || []);
+      updateIfChanged(setSharedWithMeRows, shareData.sharedWithMe || []);
+      setHasLoadedCategory(true);
+      setSharedByMeCount((currentCount) => (
+        currentCount === (data.sharedByMeCount || 0) ? currentCount : (data.sharedByMeCount || 0)
+      ));
+      setSharedWithMeCount((currentCount) => (
+        currentCount === (shareData.sharedWithMe || []).length
+          ? currentCount
+          : (shareData.sharedWithMe || []).length
+      ));
+      setError('');
+    } catch (loadError) {
+      if (background) {
+        console.error('Background category refresh failed:', loadError);
+        setError('Unable to refresh category data. Your current view is unchanged; retrying in the background.');
+      } else {
+        setError(loadError.message);
+      }
     } finally {
-      stopLoading();
+      if (!background) stopLoading();
     }
-  }, [categoryName]);
+  }, [categoryName, setCategorySnapshot, user.id]);
 
   useEffect(() => {
-    let cancelled = false;
-    loadCategory().catch((loadError) => {
-      if (!cancelled) setError(loadError.message);
-    });
-    return () => { cancelled = true; };
-  }, [loadCategory]);
+    let active = true;
+    let requestPending = false;
 
-  const handleSharesLoaded = useCallback(({ sharedByMe, sharedWithMe }) => {
-    setSharedByMeRows(sharedByMe);
-    setSharedWithMeRows(sharedWithMe);
-    setSharedByMeCount(sharedByMe.length);
-    setSharedWithMeCount(sharedWithMe.length);
-  }, []);
+    const refreshInBackground = async () => {
+      if (!active || requestPending || document.visibilityState === 'hidden') return;
+      requestPending = true;
+      try {
+        await loadCategory({ background: true });
+      } finally {
+        requestPending = false;
+      }
+    };
+
+    const cachedData = getCategorySnapshot(user.id, categoryName);
+    if (cachedData) {
+      updateIfChanged(setCredentials, cachedData.credentials);
+      updateIfChanged(setSharedByMeRows, cachedData.sharedByMe);
+      updateIfChanged(setSharedWithMeRows, cachedData.sharedWithMe);
+      setSharedByMeCount(cachedData.sharedByMeCount);
+      setSharedWithMeCount(cachedData.sharedWithMe.length);
+      setHasLoadedCategory(true);
+    }
+
+    const intervalId = window.setInterval(refreshInBackground, 30_000);
+    window.addEventListener('focus', refreshInBackground);
+    document.addEventListener('visibilitychange', refreshInBackground);
+    refreshInBackground();
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshInBackground);
+      document.removeEventListener('visibilitychange', refreshInBackground);
+    };
+  }, [categoryName, getCategorySnapshot, loadCategory, user.id]);
 
   return (
     <>
@@ -70,6 +111,7 @@ export default function CategoryClient({ user, categoryName }) {
       <LoadingViewport />
       <NavigationBar
         user={user}
+        isInviteAdmin={isInviteAdmin}
         activeView={activeView}
         onViewChange={setActiveView}
         sharedByMeCount={sharedByMeCount}
@@ -78,7 +120,11 @@ export default function CategoryClient({ user, categoryName }) {
       <main style={{ padding: '76px 5px 5px', maxWidth: '1000px', margin: '0 auto', fontFamily: 'sans-serif' }}>
         {activeView === 'vault' && <button type="button" aria-label={`Add item to ${categoryName}`} onClick={() => setIsAddOpen(true)} style={categoryAddButtonStyle}>+</button>}
         {error && <p style={{ color: '#e53e3e' }}>{error}</p>}
-        {activeView === 'vault' && !error && credentials.length === 0 ? (
+        {activeView === 'vault' && !hasLoadedCategory ? (
+          <p role="status" style={{ color: '#718096', fontStyle: 'italic' }}>
+            {error ? 'Records are temporarily unavailable; retrying in the background…' : 'Loading records in the background…'}
+          </p>
+        ) : activeView === 'vault' && credentials.length === 0 ? (
           <p style={{ color: '#718096', fontStyle: 'italic' }}>No records saved in {categoryName} section yet.</p>
         ) : activeView === 'vault' ? credentials.map((row) => (
           <CredentialRow key={row.id} item={row} isSharedView={false} onRefresh={loadCategory} />
@@ -88,7 +134,7 @@ export default function CategoryClient({ user, categoryName }) {
             initialSharedWithMe={sharedWithMeRows}
             activeTab={activeView}
             onRefresh={loadCategory}
-            onSharesLoaded={handleSharesLoaded}
+            isInitialLoading={!hasLoadedCategory && !error}
           />
         )}
       </main>

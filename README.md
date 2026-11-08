@@ -5,17 +5,21 @@ Manage Myself is a personal vault built with Next.js. It stores website credenti
 ## Application Flow
 
 1. A visitor selects **Sign In / Register with Google**.
-2. Google OAuth authenticates the user and returns the profile to `/api/auth/callback`.
-3. The application creates or updates the user record, creates a 30-day session, and redirects to `/dashboard`.
-4. The dashboard shows the user's vault categories and counts, plus records shared with or by the user.
-5. The user creates an item and submits the form. Encrypted categories require an encrypting PIN of at least four digits; Notes and Cash do not.
-6. For encrypted categories, the browser encrypts secret fields and metadata with AES-256-GCM before they are sent to the database. Cash and Notes are stored unencrypted.
-7. To reveal or edit an encrypted item, the user enters its PIN. Cash and Notes open without a PIN.
-8. Revealed values are visible for 30 seconds, then the local reveal state is cleared.
+2. Google OAuth authenticates the user and returns a verified profile to `/api/auth/callback`.
+3. The callback admits only the administrator (`rajalok83@gmail.com`) or an email with an active invitation. Other emails are denied before a user or session is created.
+4. For admitted users, the application creates or updates the user record, creates a 30-day session, and redirects to `/dashboard`.
+5. The dashboard shows the user's vault categories and counts, plus records shared with or by the user.
+6. The user creates an item and submits the form. Encrypted categories require an encrypting PIN of at least four digits; Notes and Cash do not.
+7. For encrypted categories, the browser encrypts secret fields and metadata with AES-256-GCM before they are sent to the database. Cash and Notes are stored unencrypted.
+8. To reveal or edit an encrypted item, the user enters its PIN. Cash and Notes open without a PIN.
+9. Revealed values are visible for 30 seconds, then the local reveal state is cleared.
 
 ## Features
 
 - Google sign-in and registration with an HTTP-only session cookie.
+- Invite-only access with an administrator exception and an administrator-only invitation manager.
+- Dashboard category names render immediately while the dashboard fetches all of the user's categories, records, and share hierarchy in one request. The results are kept in app memory and reused immediately when a category opens. Data is silently revalidated on focus and every 30 seconds; client state is updated only when fetched data differs, and edits and writes trigger an immediate refresh.
+- Schema compatibility checks are cached after initialization.
 - Category-based vaults for Websites, Cards, Identity, Money Matters, Notes, Insurance, and Cash.
 - Create, reveal, edit, and delete vault items.
 - Browser-side encryption for passwords, card data, identity numbers, insurance policies, and metadata.
@@ -88,6 +92,10 @@ Every item also has a required nickname. A nickname must be unique within the ow
 
 	Open [http://localhost:3000](http://localhost:3000).
 
+### Invitations
+
+The administrator account `rajalok83@gmail.com` always has access. Sign in with that Google account, open the navigation menu, and choose **Manage Invitations** to enroll or revoke email addresses. Users must sign in with the enrolled Google email address. Revoking an invitation blocks future logins and invalidates access for existing sessions. Existing accounts are not automatically invited.
+
 ## Usage Guide
 
 ### Add an item
@@ -148,6 +156,8 @@ Notes and Cash are stored in plaintext so they can be used without a PIN. Do not
 - Successful login creates a random session token in the `sessions` table.
 - The session token is stored in an HTTP-only, same-site cookie.
 - Sessions expire after 30 days.
+- Session lookup checks the active invitation so revoked invitees cannot continue using existing sessions or shared records.
+- The invitation-management API is restricted to `rajalok83@gmail.com`; the browser UI is not the security boundary.
 - Credential reads, writes, shares, and revocations verify the current session.
 - Only owners can delete credentials or change sharing. Users with `edit` access can update a shared credential.
 
@@ -156,6 +166,7 @@ Notes and Cash are stored in plaintext so they can be used without a PIN. Do not
 | Table | Purpose |
 | --- | --- |
 | `users` | Google profile identity and account metadata |
+| `invited_emails` | Active and revoked email invitations, including the inviting administrator |
 | `sessions` | Session tokens, owners, and expiration timestamps |
 | `credentials` | Credential ownership, category, encrypted payloads, salts, IVs, and timestamps |
 | `credential_shares` | Recipient access, share mode, and share timestamp |
@@ -172,6 +183,7 @@ Credential rows use `UNIQUE(owner_id, nickname)`. Notes have their own `UNIQUE(o
 | `/api/auth/signin` | `GET` | Start Google OAuth |
 | `/api/auth/callback` | `GET` | Validate OAuth state, exchange code, and create a session |
 | `/api/auth/logout` | `GET` | End the current session |
+| `/api/admin/invitations` | `GET`, `POST`, `DELETE` | Administrator-only invitation management |
 | `/api/dashboard` | `GET` | Load dashboard credential and sharing summaries |
 | `/api/categories/[name]` | `GET` | Load credentials for a category |
 | `/api/credentials` | `GET`, `POST` | List and create credentials |

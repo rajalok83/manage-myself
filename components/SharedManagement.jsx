@@ -3,12 +3,16 @@
 import { useState, useEffect } from 'react';
 import CredentialRow from './CredentialRow';
 import { showToast } from '@/lib/toast';
-import { startLoading, stopLoading } from '@/lib/loading';
 
-export default function SharedManagement({ initialSharedByMe, initialSharedWithMe, activeTab: parentActiveTab, onRefresh, onSharesLoaded }) {
+export default function SharedManagement({
+  initialSharedByMe,
+  initialSharedWithMe,
+  activeTab: parentActiveTab,
+  onRefresh,
+  isInitialLoading = false
+}) {
   const [sharedByMe, setSharedByMe] = useState(initialSharedByMe);
   const [sharedWithMe, setSharedWithMe] = useState(initialSharedWithMe);
-  const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [revokeTarget, setRevokeTarget] = useState(null);
   const [activeTab, setActiveTab] = useState(() => {
@@ -28,37 +32,6 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
     setSharedByMe(initialSharedByMe || []);
     setSharedWithMe(initialSharedWithMe || []);
   }, [initialSharedByMe, initialSharedWithMe]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadShares = async () => {
-      setIsLoading(true);
-      setErrorMessage('');
-      startLoading();
-
-      try {
-        const response = await fetch('/api/share', { cache: 'no-store' });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Unable to load shared credentials.');
-        if (!cancelled) {
-          const nextSharedByMe = data.sharedByMe || [];
-          const nextSharedWithMe = data.sharedWithMe || [];
-          setSharedByMe(nextSharedByMe);
-          setSharedWithMe(nextSharedWithMe);
-          onSharesLoaded?.({ sharedByMe: nextSharedByMe, sharedWithMe: nextSharedWithMe });
-        }
-      } catch (error) {
-        if (!cancelled) setErrorMessage(error.message);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-        stopLoading();
-      }
-    };
-
-    loadShares();
-    return () => { cancelled = true; };
-  }, [onSharesLoaded, parentActiveTab]);
 
   // Sends database calls to wipe explicit permission records immediately
   const handleRevokeShare = async (itemId, recipientEmails = [], revokeAll = false, itemType = 'credential') => {
@@ -96,24 +69,24 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
   return (
     <div>
       {errorMessage && <p style={{ color: '#e53e3e' }}>{errorMessage}</p>}
-      {isLoading && <p style={{ color: '#718096' }}>Loading shared credentials...</p>}
+      {isInitialLoading && <p role="status" style={{ color: '#718096' }}>Loading shared records…</p>}
       {/* Workspace Display Area Panels */}
       <div>
         {activeTab === 'with_me' ? (
           <div>
-            {sharedWithMe.length === 0 ? (
+            {!isInitialLoading && sharedWithMe.length === 0 ? (
               <p style={{ color: '#718096', fontStyle: 'italic', margin: 0 }}>No vault entries have been shared with you yet.</p>
-            ) : (
+            ) : sharedWithMe.length > 0 ? (
               sharedWithMe.map((item) => (
                 <CredentialRow key={`shared-wm-${item.item_type || 'credential'}-${item.id}`} item={item} isSharedView={true} onRefresh={onRefresh} />
               ))
-            )}
+            ) : null}
           </div>
         ) : (
           <div>
-            {sharedByMe.length === 0 ? (
+            {!isInitialLoading && sharedByMe.length === 0 ? (
               <p style={{ color: '#718096', fontStyle: 'italic', margin: 0 }}>You are not currently sharing any credentials with others.</p>
-            ) : (
+            ) : sharedByMe.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {sharedByMe.map((item, index) => (
                   <div
@@ -130,7 +103,7 @@ export default function SharedManagement({ initialSharedByMe, initialSharedWithM
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </div>

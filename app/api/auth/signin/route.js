@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getGoogleRedirectUri } from '@/lib/google-auth';
+import { AUTH_CONFIG, IS_PRODUCTION } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -8,7 +9,7 @@ export async function GET(request) {
   console.log("✈️ PHASE 1: STARTING AUTHENTICATION DISPATCH");
 
   // Read explicitly from the stable config file to clear undefined/blank variable constraints
-  const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  const clientId = String(AUTH_CONFIG.GOOGLE_CLIENT_ID || '').trim();
   const redirectUri = getGoogleRedirectUri(request);
 
   console.log(`⏰ SYSTEM RUNNING TIMESTAMP: ${new Date().toLocaleTimeString()}`);
@@ -40,7 +41,7 @@ export async function GET(request) {
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 300,
-    secure: process.env.NODE_ENV === 'production'
+    secure: IS_PRODUCTION
   });
 
   return response;

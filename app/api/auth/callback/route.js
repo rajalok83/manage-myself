@@ -1,6 +1,7 @@
-import { turso } from '@/lib/turso';
+import { turso, isEmailAllowed } from '@/lib/turso';
 import { NextResponse } from 'next/server';
 import { getGoogleRedirectUri, getPublicOrigin } from '@/lib/google-auth';
+import { AUTH_CONFIG, IS_PRODUCTION } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -19,8 +20,8 @@ export async function GET(request) {
 
   try {
     // These lines will now map beautifully without throwing an undefined error
-    const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
-    const clientSecret = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+    const clientId = String(AUTH_CONFIG.GOOGLE_CLIENT_ID || '').trim();
+    const clientSecret = String(AUTH_CONFIG.GOOGLE_CLIENT_SECRET || '').trim();
     const redirectUri = getGoogleRedirectUri(request);
 
     const stateCookie = request.cookies.get('oauth_state')?.value;
@@ -76,11 +77,23 @@ export async function GET(request) {
 
     const profile = await userResponse.json(); 
 
+    const email = String(profile.email || '').trim().toLowerCase();
+    if (!profile.email_verified || !email || !profile.sub) {
+      return NextResponse.json({ error: 'Google did not provide a verified email address.' }, { status: 400 });
+    }
+
+    if (!(await isEmailAllowed(email))) {
+      const deniedResponse = NextResponse.redirect(new URL('/?error=invite_required', getPublicOrigin(request)));
+      deniedResponse.cookies.set('oauth_state', '', { maxAge: 0, path: '/' });
+      deniedResponse.cookies.delete('session_token');
+      return deniedResponse;
+    }
+
     // Handle names configuration extraction safely
     const nameParts = profile.name?.split(' ') || [];
     const firstName = profile.given_name || nameParts[0] || 'First';
     const lastName = profile.family_name || nameParts.slice(1).join(' ') || 'Last';
-    const userId = String(profile.sub || profile.id);
+    const userId = String(profile.sub);
 
     console.log("💾 COMMITTING RECORD TO TURSO DATABASE:", profile.email);
     await turso.execute({
@@ -90,7 +103,7 @@ export async function GET(request) {
               first_name = excluded.first_name, 
               last_name = excluded.last_name, 
               avatar_url = excluded.avatar_url`,
-      args: [userId, profile.email, firstName, lastName, profile.picture || '']
+      args: [userId, email, firstName, lastName, profile.picture || '']
     });
 
     // Create a crypto secure session token using Web Crypto API
@@ -115,7 +128,7 @@ export async function GET(request) {
     
     response.cookies.set('session_token', sessionToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', 
+      secure: IS_PRODUCTION,
       sameSite: 'lax',
       maxAge: sessionDurationInSeconds,
       path: '/',

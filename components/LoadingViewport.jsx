@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import LoadingIndicator from './LoadingIndicator';
 
 export default function LoadingViewport() {
   const [activeRequests, setActiveRequests] = useState(0);
@@ -16,14 +17,9 @@ export default function LoadingViewport() {
   if (activeRequests === 0) return null;
 
   return (
-    <>
-      <style>{'@keyframes app-spin { to { transform: rotate(360deg); } } @keyframes app-spin-reverse { to { transform: rotate(-360deg); } }'}</style>
-      <div role="status" aria-label="Loading" style={overlayStyle}>
-        <div style={spinnerStyle}>
-          <span aria-hidden="true" style={lockStyle}>🔒</span>
-        </div>
-      </div>
-    </>
+    <div role="status" aria-label="Loading" aria-busy="true" style={overlayStyle}>
+      <LoadingIndicator />
+    </div>
   );
 }
 
@@ -35,24 +31,4 @@ const overlayStyle = {
   placeItems: 'center',
   background: 'rgba(255, 255, 255, 0.42)',
   cursor: 'wait'
-};
-
-const spinnerStyle = {
-  width: '74px',
-  height: '74px',
-  display: 'grid',
-  placeItems: 'center',
-  border: '6px solid #fbbf24',
-  borderTopColor: '#ec4899',
-  borderRightColor: '#8b5cf6',
-  borderRadius: '50%',
-  animation: 'app-spin 0.9s linear infinite',
-  background: 'rgba(255, 255, 255, 0.9)',
-  boxShadow: '0 10px 28px rgba(37, 99, 235, 0.2)'
-};
-
-const lockStyle = {
-  fontSize: '30px',
-  lineHeight: 1,
-  animation: 'app-spin-reverse 0.9s linear infinite'
 };
